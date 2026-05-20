@@ -1,4 +1,5 @@
 ---
+name: structure
 description: File and module structure for the expense summary CLI tool. All code must follow this layout.
 ---
 

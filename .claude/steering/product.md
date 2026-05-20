@@ -1,4 +1,5 @@
 ---
+name: product
 description: Product scope and constraints for the expense summary CLI tool. Apply to all planning, design, and implementation decisions.
 ---
 

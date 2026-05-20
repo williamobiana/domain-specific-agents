@@ -1,4 +1,5 @@
 ---
+name: tech
 description: Technology choices and coding conventions for the expense summary CLI tool. All implementation must follow these decisions.
 ---
 
