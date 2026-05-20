@@ -29,7 +29,7 @@ expense-summary/
 |---|---|
 | `main.py` | CLI wiring only — no business logic |
 | `pdf_converter.py` | Accept a PDF path, return a Markdown string |
-| `parser.py` | Accept a Markdown string, return a list of `ExpenseItem` objects |
+| `parser.py` | Accept a Markdown string, return a list of `ExpenseItem` objects (each contains the parsed item description text and amount; the PDF does not provide labelled fields) |
 | `categories.py` | Declare the canonical schema (sections, category names, order) — **nothing else imports this definition from anywhere else** |
 | `grouper.py` | Accept a list of `ExpenseItem`, return a list of `CategorisedItem` — **the only place category-matching logic lives** |
 | `summariser.py` | Accept a list of `CategorisedItem`, return `SectionSummary` objects with per-category totals, section subtotals, and grand totals |
@@ -61,7 +61,7 @@ OUTFLOW_SECTIONS = ["Regular Outflows", "Irregular Outflows", "Assets"]
 # parser.py
 @dataclass
 class ExpenseItem:
-    raw_label: str   # original text from the report
+    raw_text: str   # parsed item description text from the report (no labelled fields)
     amount: float    # parsed numeric value
 
 # grouper.py

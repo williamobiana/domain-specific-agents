@@ -23,15 +23,18 @@ Python 3.11+
 
 Matching in `grouper.py` works in two passes:
 
-1. **Exact match** — normalise both the parsed label and the canonical category name (lowercase, collapse whitespace, strip punctuation) and compare directly.
+> NOTE: The source PDF contains no explicit labeled fields — only item description text and an amount. All matching must therefore operate on the parsed item text/description (and optionally the amount) only.
+
+1. **Exact match** — normalise both the parsed item text and the canonical category name (lowercase, collapse whitespace, strip punctuation) and compare directly.
 2. **Fuzzy match** — if exact match fails, use a simple substring or token overlap check. Do not use a third-party fuzzy library; keep it in plain Python.
 
-If neither pass produces a match, assign the item to `"Uncategorised"` and emit a warning. The match function must accept a label string and return a `(section, category)` tuple or `None`.
+If neither pass produces a match, assign the item to `"Uncategorised"` and emit a warning. The match function must accept an item text string (the parsed description) and return a `(section, category)` tuple or `None`.
 
 ```python
 # grouper.py — canonical signature
-def match_category(label: str) -> tuple[str, str] | None:
-    """Return (section_name, category_name) or None if no match found."""
+def match_category(item_text: str) -> tuple[str, str] | None:
+    """Return (section_name, category_name) or None if no match found.
+    `item_text` is the parsed description extracted from the PDF (there are no explicit labels)."""
 ```
 
 Category names are imported from `categories.py` — never hard-coded in `grouper.py` logic.
