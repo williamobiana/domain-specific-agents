@@ -1,0 +1,17 @@
+NOTES
+
+external: chatgpt
+prompt: <define the project you want to build, and what are the list the user requirments that is needed>
+
+external: claudecode UI
+context: chatgpt response, 1 agent/kfc file as template
+prompt: using the context above, draft the product.md, structure.md & project.md (steering files)
+
+context: steering files
+prompt:
+using the context above, list all the requirements that is need to achieve the desired outcome.
+think step by step
+
+context: agent/kfc files, steering files
+prompt:
+using the requirments list and the context above, write an approprate requirements.md
