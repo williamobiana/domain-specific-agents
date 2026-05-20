@@ -9,10 +9,11 @@ expense-summary/
 ├── src/
 │   ├── main.py          # Entry point — parses CLI args, calls pipeline, handles top-level errors
 │   ├── pdf_converter.py # PDF → Markdown conversion
-│   ├── parser.py        # Markdown → list of raw expense line items
-│   ├── grouper.py       # Groups expense items by name — ALL grouping logic lives here
-│   ├── summariser.py    # Sums amounts per group → list of (group_name, total)
-│   └── writer.py        # Writes the final CSV
+│   ├── parser.py        # Markdown → list of raw ExpenseItem objects
+│   ├── categories.py    # Canonical category/section schema — the single source of truth for all category names
+│   ├── grouper.py       # Maps ExpenseItems to known categories — ALL matching logic lives here
+│   ├── summariser.py    # Sums amounts per category, computes section subtotals and grand totals
+│   └── writer.py        # Writes the final CSV in canonical section order
 ├── tests/
 │   ├── test_parser.py
 │   ├── test_grouper.py
@@ -28,13 +29,34 @@ expense-summary/
 | `main.py` | CLI wiring only — no business logic |
 | `pdf_converter.py` | Accept a PDF path, return a Markdown string |
 | `parser.py` | Accept a Markdown string, return a list of `ExpenseItem` objects |
-| `grouper.py` | Accept a list of `ExpenseItem`, return a list of `GroupedExpense` — **the only place grouping logic lives** |
-| `summariser.py` | Accept a list of `GroupedExpense`, return `(group_name, total)` pairs |
-| `writer.py` | Accept `(group_name, total)` pairs and an output path, write the CSV |
+| `categories.py` | Declare the canonical schema (sections, category names, order) — **nothing else imports this definition from anywhere else** |
+| `grouper.py` | Accept a list of `ExpenseItem`, return a list of `CategorisedItem` — **the only place category-matching logic lives** |
+| `summariser.py` | Accept a list of `CategorisedItem`, return `SectionSummary` objects with per-category totals, section subtotals, and grand totals |
+| `writer.py` | Accept a list of `SectionSummary` and an output path, write the CSV in canonical order |
 
 ## Data types
 
 ```python
+# categories.py — canonical schema, imported by grouper and writer
+SCHEMA: list[Section] = [
+    Section(name="Regular Inflows", categories=[
+        "Salary",
+    ]),
+    Section(name="Irregular Inflows", categories=[
+        "Carry Over",
+        "Unexpected / Refund",
+        "Loan",
+    ]),
+    Section(name="Asset Liquidation", categories=[
+        "Savings",
+        "Stocks & Shares",
+    ]),
+    # ... and so on for outflow sections
+]
+
+INCOME_SECTIONS  = ["Regular Inflows", "Irregular Inflows", "Asset Liquidation"]
+OUTFLOW_SECTIONS = ["Regular Outflows", "Irregular Outflows", "Assets"]
+
 # parser.py
 @dataclass
 class ExpenseItem:
@@ -43,15 +65,48 @@ class ExpenseItem:
 
 # grouper.py
 @dataclass
-class GroupedExpense:
-    group_name: str
-    items: list[ExpenseItem]
+class CategorisedItem:
+    section: str          # e.g. "Regular Inflows"
+    category: str         # e.g. "Salary" — must be a value from SCHEMA
+    amount: float
+
+# summariser.py
+@dataclass
+class CategoryTotal:
+    category: str
+    total: float
+
+@dataclass
+class SectionSummary:
+    section: str
+    categories: list[CategoryTotal]
+    subtotal: float          # sum of all category totals in this section
 ```
+
+## CSV output format
+
+```
+section,category,total_amount
+Regular Inflows,Salary,3500.00
+Regular Inflows,Total Regular Inflows,3500.00
+Irregular Inflows,Carry Over,200.00
+...
+,Total Income,3700.00
+Regular Outflows,Rent,900.00
+...
+,Total Expenditure,2400.00
+```
+
+- Section subtotal rows repeat the section name and use `Total <Section Name>` as the category.
+- Grand total rows (`Total Income`, `Total Expenditure`) have an empty section column.
+- All amounts formatted to 2 decimal places.
 
 ## Rules
 
-- Each module does one thing. Do not let grouping logic bleed into `parser.py` or `summariser.py`.
+- `categories.py` is the single source of truth for category and section names. No other module hard-codes a category string.
+- Grouping/matching logic lives only in `grouper.py`. Never in `parser.py`, `summariser.py`, or `writer.py`.
 - `main.py` is the only module that prints to stdout/stderr or calls `sys.exit`.
 - No module imports from `main.py`.
 - Tests cover `parser`, `grouper`, and `summariser` independently.
 - Intermediate `.md` file (if written to disk) goes in the system temp directory, not alongside the input file.
+- If a parsed item does not match any known category, `grouper.py` raises a warning (logged to stderr via `main.py`) and assigns it to an `"Uncategorised"` bucket — it does not crash.
