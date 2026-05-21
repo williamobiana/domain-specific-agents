@@ -7,7 +7,7 @@
   - Create a top-level `expense_summary` entry point script (or `[project.scripts]` entry) that calls `src.main:main`
   - _Requirements: 10.1, 11.1_
 
-- [ ] 2. Implement `src/errors.py` — custom exception classes
+- [x] 2. Implement `src/errors.py` — custom exception classes
   - Write `ConversionError`, `ParseError`, and `GroupingError` as plain `Exception` subclasses with docstrings matching the design
   - _Requirements: 9.1, 9.2, 9.3_
 
