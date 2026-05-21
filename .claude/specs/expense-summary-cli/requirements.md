@@ -174,7 +174,7 @@
 
 #### Acceptance Criteria
 
-1. WHEN the tool is executed THEN it SHALL require Python 3.11 or later.
+1. WHEN the tool is executed THEN it SHALL require Python 3.8 or later.
 2. WHEN processing a PDF THEN the system SHALL NOT make any network requests, access any external APIs, use any LLMs, open any GUI, or read from or write to any database.
 3. WHEN performing category matching THEN the system SHALL NOT use any third-party fuzzy matching library; all matching SHALL be implemented in pure Python.
 4. WHEN writing CSV output THEN the system SHALL use Python's `csv` stdlib module.

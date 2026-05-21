@@ -3,7 +3,7 @@
 - [ ] 1. Set up project structure and core scaffolding
   - Create the `src/` and `tests/` directories
   - Create empty `__init__.py` files in both `src/` and `tests/` so they are recognised as packages
-  - Create `pyproject.toml` (or `setup.cfg`) declaring Python 3.11+, listing `pdfplumber` and `pdfminer.six` as dependencies, and configuring `pytest` as the test runner
+  - Create `pyproject.toml` (or `setup.cfg`) declaring Python 3.8+, listing `pdfplumber` and `pdfminer.six` as dependencies, and configuring `pytest` as the test runner
   - Create a top-level `expense_summary` entry point script (or `[project.scripts]` entry) that calls `src.main:main`
   - _Requirements: 10.1, 11.1_
 
