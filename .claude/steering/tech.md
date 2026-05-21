@@ -5,7 +5,7 @@ description: Technology choices and coding conventions for the expense summary C
 
 ## Language
 
-Python 3.11+
+Python 3.8+
 
 ## Dependencies
 
