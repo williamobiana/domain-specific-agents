@@ -1,6 +1,6 @@
 # Implementation Plan
 
-- [ ] 1. Set up project structure and core scaffolding
+- [x] 1. Set up project structure and core scaffolding
   - Create the `src/` and `tests/` directories
   - Create empty `__init__.py` files in both `src/` and `tests/` so they are recognised as packages
   - Create `pyproject.toml` (or `setup.cfg`) declaring Python 3.8+, listing `pdfplumber` and `pdfminer.six` as dependencies, and configuring `pytest` as the test runner
