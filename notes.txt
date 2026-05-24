@@ -23,6 +23,7 @@ prompt: using the requirments list and the context above, write an approprate ta
 
 ## Executing the tasks
 context: agent/kfc files, steering files, spec (requirements, design, tasks)
-prompt: below is the task i want to execute 
+optional context: src/, test/, requirments.txt
+prompt: using the context attached, below is the task i want to execute 
 <task> 
 list out the step by step action to execute. briefly explain your thought process. think step by step.
