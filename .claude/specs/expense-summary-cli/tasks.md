@@ -41,20 +41,20 @@
   - Test that currency symbols `£`, `$`, `€` are all handled
   - _Requirements: 4.1, 4.2, 4.4, 4.5, 10.3_
 
-- [ ] 5. Implement `src/grouper.py` and write `tests/test_grouper.py`
-- [ ] 5.1 Implement `_normalise`, `_exact_match`, and `_fuzzy_match`
+- [x] 5. Implement `src/grouper.py` and write `tests/test_grouper.py`
+- [x] 5.1 Implement `_normalise`, `_exact_match`, and `_fuzzy_match`
   - Write `_normalise(text: str) -> str`: lowercase, collapse whitespace, strip punctuation
   - Write `_exact_match(normalised_text: str) -> tuple[str, str] | None`: iterate over `SCHEMA`, normalise each category name, return `(section, category)` on equality
   - Write `_fuzzy_match(normalised_text: str) -> tuple[str, str] | None`: token-set overlap >= 1 covering >= 50% of the category's tokens, or full-substring containment; tie-break by overlap ratio then `SCHEMA` order
   - Import only from `categories` and `errors`; never print or call `sys.exit`
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.6, 11.3_
 
-- [ ] 5.2 Implement `match_category` and `group_items`
+- [x] 5.2 Implement `match_category` and `group_items`
   - Write `match_category(item_text: str) -> tuple[str, str] | None`: run `_exact_match` first, fall back to `_fuzzy_match`, return `None` if both fail
   - Write `group_items(items: list[ExpenseItem]) -> tuple[list[CategorisedItem], list[ExpenseItem]]`: call `match_category` per item; build `CategorisedItem` for matches; collect unmatched items in a separate list; assign unmatched to section `"Uncategorised"`, category `"Uncategorised"` in the first return list; return `(all_categorised, unmatched)`
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 9.5_
 
-- [ ] 5.3 Write `tests/test_grouper.py`
+- [x] 5.3 Write `tests/test_grouper.py`
   - Test `match_category("Salary")` returns `("Regular Inflows", "Salary")`
   - Test every category in `SCHEMA` with exact text returns the correct `(section, category)` pair
   - Test case-insensitive variant: `match_category("salary")` returns `("Regular Inflows", "Salary")`
