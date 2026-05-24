@@ -7,3 +7,9 @@ The goal is to cut down model inference costs by achieving relevant outputs with
 This project was inspired by Heeki Park. 
 
 See his blog post for the original idea: [Using spec-driven development with Claude](https://heeki.medium.com/using-spec-driven-development-with-claude-code-4a1ebe5d9f29).
+
+
+
+## PDF Processing
+
+Uses pdfplumber and pdfminer.six for PDF extraction.
