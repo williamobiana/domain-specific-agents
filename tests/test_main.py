@@ -1,12 +1,26 @@
 from __future__ import annotations
 
+import io
 from unittest.mock import patch
 
 import pytest
+from docx import Document as DocxDocument
 
 from src.errors import ConversionError, GroupingError, ParseError
 from src.main import main, run_pipeline, validate_paths
 from src.parser import ExpenseItem
+
+
+def _make_docx_file(tmp_path, lines, filename="temp.docx"):
+    """Create a .docx with one paragraph per line and return its path string."""
+    doc = DocxDocument()
+    for line in lines:
+        doc.add_paragraph(line)
+    buf = io.BytesIO()
+    doc.save(buf)
+    path = tmp_path / filename
+    path.write_bytes(buf.getvalue())
+    return path
 
 
 class TestValidatePaths:
@@ -69,42 +83,38 @@ class TestValidatePaths:
 
 class TestRunPipeline:
     def test_happy_path_returns_empty_unmatched_list(self, tmp_path):
-        temp_md = tmp_path / "temp.md"
-        temp_md.write_text("Salary £3,500.00\n", encoding="utf-8")
+        docx_path = _make_docx_file(tmp_path, ["Salary £3,500.00"])
         output_csv = tmp_path / "out.csv"
 
-        with patch("src.main.convert_pdf", return_value=str(temp_md)):
+        with patch("src.main.convert_pdf", return_value=str(docx_path)):
             unmatched = run_pipeline("input.pdf", str(output_csv))
 
         assert unmatched == []
 
     def test_temp_file_deleted_on_success(self, tmp_path):
-        temp_md = tmp_path / "temp.md"
-        temp_md.write_text("Salary £3,500.00\n", encoding="utf-8")
+        docx_path = _make_docx_file(tmp_path, ["Salary £3,500.00"])
         output_csv = tmp_path / "out.csv"
 
-        with patch("src.main.convert_pdf", return_value=str(temp_md)):
+        with patch("src.main.convert_pdf", return_value=str(docx_path)):
             run_pipeline("input.pdf", str(output_csv))
 
-        assert not temp_md.exists()
+        assert not docx_path.exists()
 
     def test_temp_file_deleted_on_parse_error(self, tmp_path):
-        temp_md = tmp_path / "temp.md"
-        temp_md.write_text("no amounts here\n", encoding="utf-8")
+        docx_path = _make_docx_file(tmp_path, ["no amounts here"])
         output_csv = tmp_path / "out.csv"
 
-        with patch("src.main.convert_pdf", return_value=str(temp_md)):
+        with patch("src.main.convert_pdf", return_value=str(docx_path)):
             with pytest.raises(ParseError):
                 run_pipeline("input.pdf", str(output_csv))
 
-        assert not temp_md.exists()
+        assert not docx_path.exists()
 
     def test_returns_unmatched_items(self, tmp_path):
-        temp_md = tmp_path / "temp.md"
-        temp_md.write_text("Salary £3,500.00\nunknown item xyz £50.00\n", encoding="utf-8")
+        docx_path = _make_docx_file(tmp_path, ["Salary £3,500.00", "unknown item xyz £50.00"])
         output_csv = tmp_path / "out.csv"
 
-        with patch("src.main.convert_pdf", return_value=str(temp_md)):
+        with patch("src.main.convert_pdf", return_value=str(docx_path)):
             unmatched = run_pipeline("input.pdf", str(output_csv))
 
         assert len(unmatched) == 1
@@ -118,21 +128,19 @@ class TestRunPipeline:
                 run_pipeline("bad.pdf", str(output_csv))
 
     def test_output_csv_created_on_success(self, tmp_path):
-        temp_md = tmp_path / "temp.md"
-        temp_md.write_text("Salary £3,500.00\n", encoding="utf-8")
+        docx_path = _make_docx_file(tmp_path, ["Salary £3,500.00"])
         output_csv = tmp_path / "out.csv"
 
-        with patch("src.main.convert_pdf", return_value=str(temp_md)):
+        with patch("src.main.convert_pdf", return_value=str(docx_path)):
             run_pipeline("input.pdf", str(output_csv))
 
         assert output_csv.exists()
 
     def test_multiple_items_all_matched(self, tmp_path):
-        temp_md = tmp_path / "temp.md"
-        temp_md.write_text("Salary £3,500.00\nRent £900.00\n", encoding="utf-8")
+        docx_path = _make_docx_file(tmp_path, ["Salary £3,500.00", "Rent £900.00"])
         output_csv = tmp_path / "out.csv"
 
-        with patch("src.main.convert_pdf", return_value=str(temp_md)):
+        with patch("src.main.convert_pdf", return_value=str(docx_path)):
             unmatched = run_pipeline("input.pdf", str(output_csv))
 
         assert unmatched == []

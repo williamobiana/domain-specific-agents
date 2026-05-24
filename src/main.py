@@ -38,9 +38,7 @@ def run_pipeline(input_path: str, output_path: str) -> list[ExpenseItem]:
     Raises ConversionError, ParseError, or GroupingError on failure."""
     temp_path = convert_pdf(input_path)
     try:
-        with open(temp_path, encoding="utf-8") as f:
-            markdown_text = f.read()
-        items = parse_items(markdown_text)
+        items = parse_items(temp_path)
         categorised, unmatched = group_items(items)
         summaries = summarise(categorised)
         total_income, total_expenditure = compute_grand_totals(summaries)

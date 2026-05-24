@@ -32,32 +32,33 @@
 
 ---
 
-### Requirement 3: PDF-to-Markdown Conversion
+### Requirement 3: PDF-to-Word Conversion
 
-**User Story:** As a developer, I want the PDF content to be converted to an intermediate Markdown string so that the parsing step works on a consistent text format regardless of PDF structure.
+**User Story:** As a developer, I want the PDF content to be converted to an intermediate Word document so that the parsing step can extract structured tables and paragraphs regardless of PDF layout complexity.
 
 #### Acceptance Criteria
 
-1. WHEN a valid PDF file is provided THEN the system SHALL attempt to convert it to a Markdown string using `pdfplumber` as the primary library.
-2. IF `pdfplumber` fails to extract usable text from the PDF THEN the system SHALL fall back to `pdfminer.six` to perform the conversion.
-3. IF both `pdfplumber` and `pdfminer.six` fail to extract usable text THEN the system SHALL raise a `ConversionError`.
-4. WHEN the intermediate Markdown string is produced THEN the system SHALL write it to a temporary file in the system temp directory.
-5. WHEN processing is complete (whether successful or not) THEN the system SHALL delete the temporary Markdown file, ensuring no leftover files remain.
-6. WHERE PDF conversion logic is concerned, it SHALL reside exclusively in `src/pdf_converter.py`.
+1. WHEN a valid PDF file is provided THEN the system SHALL convert it to a Word `.docx` file using the `pdf2docx` library.
+2. IF `pdf2docx` fails to produce a non-empty document THEN the system SHALL raise a `ConversionError`.
+3. WHEN the intermediate `.docx` file is produced THEN the system SHALL write it to a temporary file in the system temp directory.
+4. WHEN processing is complete (whether successful or not) THEN the system SHALL delete the temporary `.docx` file, ensuring no leftover files remain.
+5. WHERE PDF conversion logic is concerned, it SHALL reside exclusively in `src/pdf_converter.py`.
 
 ---
 
 ### Requirement 4: Expense Line Item Parsing
 
-**User Story:** As a developer, I want raw expense line items extracted from the Markdown text so that downstream steps can operate on structured data rather than unstructured text.
+**User Story:** As a developer, I want raw expense line items extracted from the Word document so that downstream steps can operate on structured data with direction context.
 
 #### Acceptance Criteria
 
-1. WHEN the Markdown string is parsed THEN the system SHALL extract individual expense line items, each represented as a `raw_text` description (string) and an `amount` (float).
-2. IF no line items are found after parsing the entire Markdown string THEN the system SHALL raise a `ParseError`.
-3. WHERE parsing logic is concerned, it SHALL reside exclusively in `src/parser.py`.
-4. WHEN parsing amounts, the system SHALL handle common numeric formats (e.g., values with commas, currency symbols) and convert them to Python floats.
-5. IF a line in the Markdown does not contain both a recognisable description and a numeric amount THEN the system SHALL skip that line without raising an error.
+1. WHEN the `.docx` file is parsed THEN the system SHALL extract individual expense line items, each represented as a `raw_text` description (string), an `amount` (float), and a `direction` (`'in'` for Money In / credit, `'out'` for Money Out / debit).
+2. WHEN the `.docx` contains a transactions table with Money In and Money Out columns THEN the system SHALL extract items from the table, setting direction based on which column contains the amount.
+3. WHEN the `.docx` contains no recognised table THEN the system SHALL fall back to extracting items from paragraph text, treating all items as `direction='out'`.
+4. IF no line items are found after parsing the entire document THEN the system SHALL raise a `ParseError`.
+5. WHERE parsing logic is concerned, it SHALL reside exclusively in `src/parser.py`.
+6. WHEN parsing amounts, the system SHALL handle common numeric formats (e.g., values with commas, currency symbols) and convert them to Python floats.
+7. IF a table row or paragraph line does not yield both a recognisable description and a numeric amount THEN the system SHALL skip it without raising an error.
 
 ---
 
@@ -67,9 +68,10 @@
 
 #### Acceptance Criteria
 
-1. WHEN a line item's `raw_text` is evaluated THEN the system SHALL first attempt exact keyword matching against known category keywords.
-2. IF exact matching does not produce a match THEN the system SHALL attempt fuzzy heuristic matching using pure Python (no third-party fuzzy matching libraries, no LLMs).
-3. IF neither exact nor fuzzy matching produces a match THEN the system SHALL assign the item to an "Uncategorised" bucket and emit a warning (not raise an error or crash).
+1. WHEN a line item's `raw_text` is evaluated THEN the system SHALL first attempt exact normalised matching against known category names.
+2. IF exact matching does not produce a match THEN the system SHALL attempt keyword pattern matching against a built-in table of common bank transaction descriptions.
+3. IF keyword matching does not produce a match THEN the system SHALL attempt fuzzy heuristic matching using pure Python (no third-party fuzzy matching libraries, no LLMs), biasing toward income sections for `direction='in'` items and outflow sections for `direction='out'` items.
+4. IF no matching pass produces a match THEN the system SHALL assign the item to an "Uncategorised" bucket and emit a warning (not raise an error or crash).
 4. WHERE all matching logic is concerned, it SHALL reside exclusively in `src/grouper.py`.
 5. WHERE all canonical category names and section names are defined, they SHALL reside exclusively in `src/categories.py`, which is the single source of truth.
 6. No other module SHALL hardcode category or section names; all references SHALL import from `src/categories.py`.
@@ -152,8 +154,8 @@
 
 1. WHERE source modules are located, they SHALL follow this structure:
    - `src/main.py` — CLI entry point; the only module that calls `sys.exit` or prints to stdout/stderr.
-   - `src/pdf_converter.py` — PDF-to-Markdown conversion logic.
-   - `src/parser.py` — Markdown-to-line-items parsing logic.
+   - `src/pdf_converter.py` — PDF-to-Word (.docx) conversion logic.
+   - `src/parser.py` — Word (.docx)-to-line-items parsing logic.
    - `src/categories.py` — Single source of truth for all section and category names.
    - `src/grouper.py` — All category matching and assignment logic.
    - `src/summariser.py` — Summarisation and totalling logic.
@@ -176,7 +178,9 @@
 
 1. WHEN the tool is executed THEN it SHALL require Python 3.8 or later.
 2. WHEN processing a PDF THEN the system SHALL NOT make any network requests, access any external APIs, use any LLMs, open any GUI, or read from or write to any database.
-3. WHEN performing category matching THEN the system SHALL NOT use any third-party fuzzy matching library; all matching SHALL be implemented in pure Python.
-4. WHEN writing CSV output THEN the system SHALL use Python's `csv` stdlib module.
-5. WHEN parsing CLI arguments THEN the system SHALL use Python's `argparse` stdlib module.
-6. WHEN handling temporary files THEN the system SHALL use the system temp directory and SHALL clean up all temporary files upon completion or failure.
+3. WHEN converting a PDF THEN the system SHALL use `pdf2docx` as the sole conversion library; `pdfplumber` and `pdfminer.six` SHALL NOT be used.
+4. WHEN reading the intermediate document THEN the system SHALL use `python-docx`.
+5. WHEN performing category matching THEN the system SHALL NOT use any third-party fuzzy matching library; all matching SHALL be implemented in pure Python.
+6. WHEN writing CSV output THEN the system SHALL use Python's `csv` stdlib module.
+7. WHEN parsing CLI arguments THEN the system SHALL use Python's `argparse` stdlib module.
+8. WHEN handling temporary files THEN the system SHALL use the system temp directory and SHALL clean up all temporary `.docx` files upon completion or failure.

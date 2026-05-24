@@ -23,35 +23,38 @@
   - _Requirements: 5.5, 5.6, 6.1, 6.2, 10.1_
 
 - [x] 4. Implement `src/parser.py` and write `tests/test_parser.py`
-- [x] 4.1 Implement `_normalise_amount` and `_parse_line`
-  - Write `_normalise_amount(raw: str) -> float` stripping `£`, `$`, `€`, commas, and optional whitespace before converting to `float`; raise `ValueError` on unparseable input
-  - Write `_parse_line(line: str) -> ExpenseItem | None` using the regex pattern `[£$€]?\s*[\d,]+(\.\d{1,2})?` to locate the amount token; treat all remaining text as the description; return `None` if the pattern is absent or the description is empty
-  - _Requirements: 4.1, 4.4, 4.5_
+- [x] 4.1 Implement `_normalise_amount`, `_parse_text_line`, `_extract_from_paragraphs`
+  - Keep `_normalise_amount(raw: str) -> float` (unchanged)
+  - Rewrite `_parse_text_line(line: str) -> ExpenseItem | None` (replaces `_parse_line`); sets `direction='out'`
+  - Write `_extract_from_paragraphs(doc) -> list[ExpenseItem]` iterating `doc.paragraphs`, calling `_parse_text_line`
+  - _Requirements: 4.3, 4.6, 4.7_
 
-- [x] 4.2 Implement `parse_items`
-  - Write `parse_items(markdown_text: str) -> list[ExpenseItem]` iterating over lines, calling `_parse_line`, collecting non-`None` results
-  - Raise `ParseError` (imported from `errors`) when the result list is empty
-  - _Requirements: 4.1, 4.2, 4.3, 9.2_
+- [x] 4.2 Implement `_extract_from_tables` and `parse_items`
+  - Write `_extract_from_tables(doc) -> list[ExpenseItem]`: detect Money In / Money Out header columns; extract each data row as `ExpenseItem` with `direction='in'` or `direction='out'`
+  - Write `parse_items(docx_path: str) -> list[ExpenseItem]`: open `.docx` via python-docx; call `_extract_from_tables` first, then `_extract_from_paragraphs` as fallback; raise `ParseError` when result is empty
+  - Add `direction: str = 'out'` field to `ExpenseItem` dataclass
+  - _Requirements: 4.1, 4.2, 4.4, 4.5, 9.2_
 
 - [x] 4.3 Write `tests/test_parser.py`
-  - Test that a markdown string with three valid expense lines and one invalid line returns exactly three `ExpenseItem` objects
-  - Test `_normalise_amount` with `£3,500.00`, `$1,200`, `€ 99.9`, and a bare `42` — assert correct `float` values
-  - Test that lines without any amount token are skipped (no error)
-  - Test that `parse_items("")` and `parse_items("no amounts here")` raise `ParseError`
-  - Test that currency symbols `£`, `$`, `€` are all handled
-  - _Requirements: 4.1, 4.2, 4.4, 4.5, 10.3_
+  - Build in-memory `.docx` fixtures with python-docx (no real PDFs)
+  - Test table extraction: 3-column table (Description, Money In, Money Out) → correct `ExpenseItem` list with `direction` set
+  - Test paragraph fallback: plain paragraphs "Salary 3500.00" → `ExpenseItem` with `direction='out'`
+  - Test `_normalise_amount` (can reuse existing cases)
+  - Test `ParseError` raised on empty document
+  - _Requirements: 4.1, 4.2, 4.4, 4.5, 4.6, 4.7, 10.3_
 
 - [x] 5. Implement `src/grouper.py` and write `tests/test_grouper.py`
 - [x] 5.1 Implement `_normalise`, `_exact_match`, and `_fuzzy_match`
   - Write `_normalise(text: str) -> str`: lowercase, collapse whitespace, strip punctuation
   - Write `_exact_match(normalised_text: str) -> tuple[str, str] | None`: iterate over `SCHEMA`, normalise each category name, return `(section, category)` on equality
-  - Write `_fuzzy_match(normalised_text: str) -> tuple[str, str] | None`: token-set overlap >= 1 covering >= 50% of the category's tokens, or full-substring containment; tie-break by overlap ratio then `SCHEMA` order
+  - Update `_fuzzy_match(normalised_text: str, direction: str = 'out') -> tuple[str, str] | None`: direction-biased (check income sections first for `'in'`, outflow sections first for `'out'`); same token/substring logic
   - Import only from `categories` and `errors`; never print or call `sys.exit`
-  - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.6, 11.3_
+  - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.6, 11.5_
 
-- [x] 5.2 Implement `match_category` and `group_items`
-  - Write `match_category(item_text: str) -> tuple[str, str] | None`: run `_exact_match` first, fall back to `_fuzzy_match`, return `None` if both fail
-  - Write `group_items(items: list[ExpenseItem]) -> tuple[list[CategorisedItem], list[ExpenseItem]]`: call `match_category` per item; build `CategorisedItem` for matches; collect unmatched items in a separate list; assign unmatched to section `"Uncategorised"`, category `"Uncategorised"` in the first return list; return `(all_categorised, unmatched)`
+- [x] 5.2 Add `_keyword_match` and update `match_category` / `group_items`
+  - Write `_keyword_match(normalised_text: str) -> tuple[str, str] | None`: check against `_KEYWORD_PATTERNS` table (common bank descriptions → category)
+  - Update `match_category(item_text: str, direction: str = 'out') -> tuple[str, str] | None`: pass 1 exact, pass 2 keyword, pass 3 fuzzy
+  - Update `group_items` to pass `item.direction` to `match_category`
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 9.5_
 
 - [x] 5.3 Write `tests/test_grouper.py`
@@ -90,12 +93,13 @@
   - Write `write_csv(summaries, total_income, total_expenditure, output_path) -> None`: open the output path in UTF-8 write mode with `csv.writer`; write the header `section,category,total_amount`; iterate `summaries`, calling `_write_section` for each; after all income sections emit the `Total Income` grand-total row; after all outflow sections emit the `Total Expenditure` grand-total row; append any `"Uncategorised"` summary last; use only `csv` stdlib
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 11.4_
 
-- [x] 8. Implement `src/pdf_converter.py`
-  - Write `_extract_with_pdfplumber(pdf_path: str) -> str | None`: open the PDF with `pdfplumber`; concatenate text from all pages; return `None` if result is empty or whitespace-only
-  - Write `_extract_with_pdfminer(pdf_path: str) -> str | None`: use `pdfminer.six` high-level `extract_text`; return `None` on empty or exception
-  - Write `_write_temp_markdown(content: str) -> str`: use `tempfile.mkstemp(suffix=".md")` to create a temp file in the system temp dir; write `content` to it; return the file path
-  - Write `convert_pdf(pdf_path: str) -> str`: call `_extract_with_pdfplumber` first; if `None`, call `_extract_with_pdfminer`; if still `None`, raise `ConversionError`; otherwise call `_write_temp_markdown`, return the temp file path
-  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.6, 9.1, 11.2, 11.6_
+- [x] 8. Rewrite `src/pdf_converter.py` to use pdf2docx
+  - Remove `_extract_with_pdfplumber`, `_extract_with_pdfminer`, `_write_temp_markdown`
+  - Write `_convert_with_pdf2docx(pdf_path: str, docx_path: str) -> bool`: run `pdf2docx.Converter`, return `True` on success
+  - Write `_docx_has_content(docx_path: str) -> bool`: open with python-docx; return `True` if any table row or non-empty paragraph exists
+  - Write `convert_pdf(pdf_path: str) -> str`: use `tempfile.mkstemp(suffix=".docx")`, call `_convert_with_pdf2docx`; validate content with `_docx_has_content`; raise `ConversionError` on failure; return temp `.docx` path
+  - Update `pyproject.toml`: replace `pdfplumber` and `pdfminer.six` with `pdf2docx` and `python-docx`
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 9.1, 11.3, 11.4, 11.8_
 
 - [x] 9. Implement `src/main.py` — CLI entry point and pipeline orchestration
 - [x] 9.1 Implement `validate_paths`
@@ -103,18 +107,18 @@
   - _Requirements: 1.1, 2.1, 2.2, 2.3, 1.5_
 
 - [x] 9.2 Implement `run_pipeline`
-  - Write `run_pipeline(input_path: str, output_path: str) -> None`: call `convert_pdf` inside a `try/finally` that unconditionally deletes the temp markdown file via `os.unlink`; call `parse_items` with the temp file's text content; call `group_items`; call `summarise`; call `compute_grand_totals`; call `write_csv`; return `unmatched_items` to the caller (or handle warnings here)
+  - Write `run_pipeline(input_path: str, output_path: str) -> None`: call `convert_pdf` inside a `try/finally` that unconditionally deletes the temp `.docx` file via `os.unlink`; call `parse_items(temp_docx_path)` directly (no text read); call `group_items`; call `summarise`; call `compute_grand_totals`; call `write_csv`; return `unmatched_items` to the caller
   - Ensure no `print` or `sys.exit` calls are made in any imported module; all such calls stay within `main.py`
-  - _Requirements: 3.4, 3.5, 1.2, 1.3, 11.6_
+  - _Requirements: 3.3, 3.4, 1.2, 1.3, 11.8_
 
 - [x] 9.3 Implement `main` and wire up error handling
   - Write `main() -> None`: use `argparse` to accept exactly two positional arguments `input_pdf` and `output_csv`; call `validate_paths`; wrap `run_pipeline` in a `try/except` catching `ConversionError`, `ParseError`, `GroupingError`, and `OSError`; print human-readable messages to `stderr` and call `sys.exit(1)` on any caught error; call `sys.exit(0)` on success; print `stderr` warnings for any unmatched items using the format specified in the design
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 9.4, 9.5_
 
-- [x] 10. Integration smoke test with a synthetic PDF fixture
-  - Create a minimal test PDF programmatically (using `reportlab` or a pre-committed tiny binary fixture) containing at least three recognisable expense lines
-  - Write `tests/test_integration.py` that calls `run_pipeline` directly with the fixture PDF path and a temp output CSV path; assert the output CSV file exists, contains the header row, contains a `Total Income` row, and contains a `Total Expenditure` row
-  - Assert exit behaviour: confirm `main()` exits `0` on valid inputs by calling it via `subprocess` or by patching `sys.exit`
+- [x] 10. Update integration smoke test
+  - Update `tests/test_integration.py`: the fixture PDF creation (via reportlab) stays the same; update any assertions referencing `.md` temp files to reference `.docx`
+  - Ensure `run_pipeline` no longer reads the temp file as text (passes path directly to `parse_items`)
+  - Assert output CSV has header, `Total Income`, `Total Expenditure` rows and non-zero Salary amount
   - _Requirements: 1.2, 1.3, 7.3, 8.1, 8.4_
 
 ---

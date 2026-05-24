@@ -28,10 +28,10 @@ expense-summary/
 | Module | Single responsibility |
 |---|---|
 | `main.py` | CLI wiring only — no business logic |
-| `pdf_converter.py` | Accept a PDF path, return a Markdown string |
-| `parser.py` | Accept a Markdown string, return a list of `ExpenseItem` objects (each contains the parsed item description text and amount; the PDF does not provide labelled fields) |
+| `pdf_converter.py` | Accept a PDF path, convert it to a `.docx` via `pdf2docx`, return the temp `.docx` file path |
+| `parser.py` | Accept a `.docx` file path, extract expense items from Word tables (bank statements) or paragraphs (plain-text reports), return a list of `ExpenseItem` objects with description, amount, and direction |
 | `categories.py` | Declare the canonical schema (sections, category names, order) — **nothing else imports this definition from anywhere else** |
-| `grouper.py` | Accept a list of `ExpenseItem`, return a list of `CategorisedItem` — **the only place category-matching logic lives** |
+| `grouper.py` | Accept a list of `ExpenseItem`, return a list of `CategorisedItem` — **the only place category-matching logic lives**, uses item direction to bias section selection |
 | `summariser.py` | Accept a list of `CategorisedItem`, return `SectionSummary` objects with per-category totals, section subtotals, and grand totals |
 | `writer.py` | Accept a list of `SectionSummary` and an output path, write the CSV in canonical order |
 
@@ -61,8 +61,9 @@ OUTFLOW_SECTIONS = ["Regular Outflows", "Irregular Outflows", "Assets"]
 # parser.py
 @dataclass
 class ExpenseItem:
-    raw_text: str   # parsed item description text from the report (no labelled fields)
+    raw_text: str    # parsed item description text from the report (no labelled fields)
     amount: float    # parsed numeric value
+    direction: str   # 'in' (Money In / credit) or 'out' (Money Out / debit); default 'out'
 
 # grouper.py
 @dataclass
@@ -109,5 +110,5 @@ Regular Outflows,Rent,900.00
 - `main.py` is the only module that prints to stdout/stderr or calls `sys.exit`.
 - No module imports from `main.py`.
 - Tests cover `parser`, `grouper`, and `summariser` independently.
-- Intermediate `.md` file (if written to disk) goes in the system temp directory, not alongside the input file.
+- Intermediate `.docx` file goes in the system temp directory, not alongside the input file.
 - If a parsed item does not match any known category, `grouper.py` raises a warning (logged to stderr via `main.py`) and assigns it to an `"Uncategorised"` bucket — it does not crash.

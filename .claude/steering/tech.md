@@ -11,30 +11,30 @@ Python 3.8+
 
 | Purpose | Library | Notes |
 |---|---|---|
-| PDF → text | `pdfplumber` | Preferred — better table and layout extraction than PyPDF2 |
-| Markdown output | plain string formatting | The `.md` is an intermediate only, not a deliverable |
+| PDF → Word | `pdf2docx` | Primary converter; preserves table structure from bank statements |
+| Word reading | `python-docx` | Reads the `.docx` intermediate to extract tables and paragraphs |
 | CSV writing | `csv` (stdlib) | No third-party library needed |
 | CLI args | `argparse` (stdlib) | No Click or Typer — keep dependencies minimal |
 | Testing | `pytest` | Standard, no extras required |
 
-> If `pdfplumber` cannot extract usable text from a given PDF, fall back to `pdfminer.six`. Document the fallback in a comment.
+> If `pdf2docx` fails to convert or produces an empty document, raise `ConversionError`. No text-extraction fallback — the `.docx` is the single intermediate format.
 
 ## Category matching strategy
 
-Matching in `grouper.py` works in two passes:
+Matching in `grouper.py` works in three passes, using both description text and transaction direction:
 
-> NOTE: The source PDF contains no explicit labeled fields — only item description text and an amount. All matching must therefore operate on the parsed item text/description (and optionally the amount) only.
+> NOTE: The source PDF contains no explicit labeled fields — only item description text, an amount, and a direction (Money In / Money Out). Matching operates on the description text; direction is used to bias toward income vs outflow sections.
 
 1. **Exact match** — normalise both the parsed item text and the canonical category name (lowercase, collapse whitespace, strip punctuation) and compare directly.
-2. **Fuzzy match** — if exact match fails, use a simple substring or token overlap check. Do not use a third-party fuzzy library; keep it in plain Python.
+2. **Keyword match** — check the normalised text against a table of common bank description patterns (e.g. `"regular sav"` → Active Savings, `"trading 212"` → Stocks & Shares ISA). Pure Python; no third-party library.
+3. **Fuzzy match** — if exact and keyword match both fail, use a substring or token overlap check, biased toward income sections for `direction='in'` and outflow sections for `direction='out'`. Pure Python only.
 
-If neither pass produces a match, assign the item to `"Uncategorised"` and emit a warning. The match function must accept an item text string (the parsed description) and return a `(section, category)` tuple or `None`.
+If no pass produces a match, assign the item to `"Uncategorised"` and emit a warning. The match function accepts the description text and an optional direction:
 
 ```python
 # grouper.py — canonical signature
-def match_category(item_text: str) -> tuple[str, str] | None:
-    """Return (section_name, category_name) or None if no match found.
-    `item_text` is the parsed description extracted from the PDF (there are no explicit labels)."""
+def match_category(item_text: str, direction: str = 'out') -> tuple[str, str] | None:
+    """Return (section_name, category_name) or None if no match found."""
 ```
 
 Category names are imported from `categories.py` — never hard-coded in `grouper.py` logic.
@@ -79,14 +79,21 @@ Warning: 2 item(s) could not be matched to a known category and were skipped:
 
 ## Testing expectations
 
-- Unit tests for `parser`, `grouper`, `summariser`
+- Unit tests for `pdf_converter`, `parser`, `grouper`, `summariser`
+- `test_pdf_converter.py` must cover conversion success/failure paths (mock pdf2docx)
+- `test_parser.py` must cover:
+  - Table-based extraction from a .docx with a transactions table (Money In / Money Out columns)
+  - Paragraph-based extraction from a .docx with plain text expense lines
+  - `ParseError` raised when the document has no usable expense items
 - `test_grouper.py` must cover:
   - Exact label matches for every category in the schema
   - Case-insensitive and whitespace-variant matches
+  - Keyword matches (e.g. "HLAM REGULAR SAVIN" → Active Savings)
+  - Direction-biased matching: `direction='in'` prefers income sections
   - An unrecognised label returning `None`
 - `test_summariser.py` must verify section subtotals and both grand totals (`Total Income`, `Total Expenditure`)
-- Use small fixture strings/objects — no real PDFs in tests
-- Test the unhappy path: malformed input, zero rows, amounts that cannot be parsed
+- Use small in-memory `.docx` objects (built with python-docx) as fixtures — no real PDFs
+- Test the unhappy path: empty document, zero rows, amounts that cannot be parsed
 
 ## What to avoid
 
@@ -95,3 +102,4 @@ Warning: 2 item(s) could not be matched to a known category and were skipped:
 - Do not use pandas — `csv` stdlib is sufficient
 - Do not add a database or any persistence beyond the output CSV
 - Do not create a `setup.py` or packaging infrastructure unless explicitly requested
+- Do not use pdfplumber or pdfminer.six — pdf2docx is the single PDF conversion library

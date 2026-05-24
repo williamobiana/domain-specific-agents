@@ -7,7 +7,7 @@ structured CSV file. The tool operates entirely offline (no network, no LLMs, no
 and passes data through a fixed, linear pipeline:
 
 ```
-PDF file → Markdown string → list[ExpenseItem] → list[CategorisedItem] → list[SectionSummary] → CSV file
+PDF file → Word .docx file → list[ExpenseItem] → list[CategorisedItem] → list[SectionSummary] → CSV file
 ```
 
 Every pipeline stage maps to exactly one source module. All category and section names are defined
@@ -24,9 +24,9 @@ message on any expected failure.
 graph TB
     CLI[CLI — main.py\nargparse: input_pdf, output_csv]
     VAL[Input Validation\nmain.py]
-    CONV[pdf_converter.py\npdfplumber primary\npdfminer.six fallback]
-    TEMP[Temp .md file\nsystem temp dir]
-    PARSE[parser.py\nMarkdown → list of ExpenseItem]
+    CONV[pdf_converter.py\npdf2docx conversion]
+    TEMP[Temp .docx file\nsystem temp dir]
+    PARSE[parser.py\n.docx → list of ExpenseItem\ntable or paragraph extraction]
     GROUP[grouper.py\nExpenseItem → CategorisedItem\ntwo-pass matching]
     SUM[summariser.py\nCategorisedItem → SectionSummary\nsubtotals + grand totals]
     WRITE[writer.py\nSectionSummary → CSV]
@@ -58,9 +58,9 @@ graph TB
 ```mermaid
 graph LR
     A[PDF path\nstring] --> B[pdf_converter\nconvert_pdf]
-    B --> C[Markdown string]
+    B --> C[temp .docx path\nstring]
     C --> D[parser\nparse_items]
-    D --> E[list of ExpenseItem\nraw_text: str\namount: float]
+    D --> E[list of ExpenseItem\nraw_text: str\namount: float\ndirection: str]
     E --> F[grouper\ngroup_items]
     F --> G[list of CategorisedItem\nsection: str\ncategory: str\namount: float]
     F --> W[stderr warnings\nuncategorised items]
@@ -102,74 +102,76 @@ Dependencies: `pdf_converter`, `parser`, `grouper`, `summariser`, `writer`, `err
 
 ---
 
-### pdf_converter.py — PDF to Markdown Conversion
+### pdf_converter.py — PDF to Word Conversion
 
 Responsibilities:
-- Accept a PDF file path and return a Markdown-formatted string
-- Attempt text extraction with `pdfplumber` first; fall back to `pdfminer.six` if the result is
-  empty or unusable
-- Write the Markdown string to a temporary file in the system temp directory
-- Return the temp file path so the caller can read and then delete it
-- Raise `ConversionError` if both libraries fail
+- Accept a PDF file path and convert it to a Word `.docx` file using `pdf2docx`
+- Write the `.docx` to a temporary file in the system temp directory
+- Return the temp `.docx` file path so the caller can pass it to `parser.py` and then delete it
+- Raise `ConversionError` if `pdf2docx` fails or produces an empty document
 
 Interfaces:
 
 ```python
 def convert_pdf(pdf_path: str) -> str:
-    """Extract text from PDF and return as a Markdown string.
-    Raises ConversionError if neither pdfplumber nor pdfminer.six produces usable text."""
+    """Convert PDF to a temp .docx file; return the temp file path.
+    Raises ConversionError if conversion fails or yields an empty document."""
 
-def _extract_with_pdfplumber(pdf_path: str) -> str | None:
-    """Return text extracted by pdfplumber, or None if extraction yields no usable content."""
+def _convert_with_pdf2docx(pdf_path: str, docx_path: str) -> bool:
+    """Run pdf2docx conversion; return True on success, False on failure."""
 
-def _extract_with_pdfminer(pdf_path: str) -> str | None:
-    """Return text extracted by pdfminer.six (fallback), or None on failure."""
-
-def _write_temp_markdown(content: str) -> str:
-    """Write content to a temp file; return the temp file path."""
+def _docx_has_content(docx_path: str) -> bool:
+    """Return True if the .docx contains at least one table row or non-empty paragraph."""
 ```
 
-Dependencies: `pdfplumber`, `pdfminer.six`, `tempfile` (stdlib), `errors`
+Dependencies: `pdf2docx`, `python-docx`, `tempfile` (stdlib), `errors`
 
 Temp-file lifecycle note: `main.py` wraps `run_pipeline` in a `try/finally` that deletes the temp
-file regardless of success or failure. `pdf_converter` creates the file and returns its path;
+`.docx` file regardless of success or failure. `pdf_converter` creates the file and returns its path;
 cleanup responsibility sits with the caller (`main.py`).
 
 ---
 
-### parser.py — Markdown to ExpenseItem List
+### parser.py — Word Document to ExpenseItem List
 
 Responsibilities:
-- Accept a Markdown string (read from the temp file)
-- Scan each line for a recognisable expense pattern: a description text and a numeric amount
+- Accept a `.docx` file path
+- Attempt table-based extraction first: scan Word tables for a header row with Money In / Money Out
+  columns; extract each data row as an `ExpenseItem` with the appropriate `direction`
+- If no valid table is found, fall back to paragraph extraction: scan each paragraph for a
+  description + amount pattern, set `direction='out'`
 - Return a `list[ExpenseItem]`
-- Raise `ParseError` if no items are found after scanning all lines
-- Skip lines that do not match (no error on individual skipped lines)
-- Handle common numeric formats: commas as thousands separators, leading currency symbols
-  (`£`, `$`, `€`), optional whitespace between symbol and digits
+- Raise `ParseError` if no items are found after scanning the entire document
+- Skip rows/paragraphs that do not yield both a description and a numeric amount
 
 Interfaces:
 
 ```python
-def parse_items(markdown_text: str) -> list[ExpenseItem]:
-    """Parse a Markdown string into a list of ExpenseItem objects.
+def parse_items(docx_path: str) -> list[ExpenseItem]:
+    """Parse a .docx file into a list of ExpenseItem objects.
+    Tries table extraction first, then paragraph extraction.
     Raises ParseError if the result is empty."""
 
-def _parse_line(line: str) -> ExpenseItem | None:
-    """Attempt to extract a description and amount from a single line.
-    Returns None if the line does not match the expected pattern."""
+def _extract_from_tables(doc: Document) -> list[ExpenseItem]:
+    """Extract items from Word tables. Detects Money In / Money Out header columns."""
+
+def _extract_from_paragraphs(doc: Document) -> list[ExpenseItem]:
+    """Fallback: scan paragraphs for description + amount patterns."""
+
+def _parse_text_line(line: str) -> ExpenseItem | None:
+    """Extract a description and amount from a single text line; returns None if no match."""
 
 def _normalise_amount(raw: str) -> float:
     """Strip currency symbols and commas, then convert to float.
-    Raises ValueError on unparseable input (caller skips the line)."""
+    Raises ValueError on unparseable input."""
 ```
 
-Dependencies: `re` (stdlib), `errors`
+Dependencies: `python-docx`, `re` (stdlib), `errors`
 
-Line pattern strategy: a line is considered an expense line if it contains a non-empty text token
-followed (or preceded) by a numeric amount string matching the pattern
-`[£$€]?\s*[\d,]+(\.\d{1,2})?`. The description is everything on the line that is not the amount
-token, stripped of leading/trailing whitespace.
+Table detection strategy: a table row is considered a transaction row if the header row contains
+a column whose text matches `money in` / `credit` (case-insensitive) and another matching
+`money out` / `debit`. The description column is the one matching `description` / `details`.
+If neither pattern is found, the table is skipped.
 
 ---
 
@@ -217,7 +219,7 @@ Dependencies: none (zero imports)
 
 Responsibilities:
 - Accept `list[ExpenseItem]` and return `list[CategorisedItem]`
-- Run two-pass matching per item (exact then fuzzy) on `item.raw_text` only
+- Run three-pass matching per item (exact → keyword → fuzzy) using `item.raw_text` and `item.direction`
 - Assign unmatched items to section `"Uncategorised"`, category `"Uncategorised"`
 - Collect all unmatched items and return them alongside the matched list so `main.py` can emit warnings
 - Never import from `main.py`; never print to stdout/stderr directly
@@ -229,13 +231,12 @@ def group_items(
     items: list[ExpenseItem],
 ) -> tuple[list[CategorisedItem], list[ExpenseItem]]:
     """Match each ExpenseItem to a (section, category) pair.
-    Returns (matched_items, unmatched_items).
-    Unmatched items are assigned to "Uncategorised"; the second element
-    lets the caller emit warnings without grouper touching stderr."""
+    Returns (all_categorised, unmatched_items)."""
 
-def match_category(item_text: str) -> tuple[str, str] | None:
+def match_category(item_text: str, direction: str = 'out') -> tuple[str, str] | None:
     """Return (section_name, category_name) or None if no match found.
-    Pass 1: exact normalised match. Pass 2: fuzzy token/substring match."""
+    Pass 1: exact normalised match. Pass 2: keyword pattern match.
+    Pass 3: fuzzy token/substring match biased by direction."""
 
 def _normalise(text: str) -> str:
     """Lowercase, collapse whitespace, strip punctuation."""
@@ -243,28 +244,32 @@ def _normalise(text: str) -> str:
 def _exact_match(normalised_text: str) -> tuple[str, str] | None:
     """Compare normalised item text against each normalised category name."""
 
-def _fuzzy_match(normalised_text: str) -> tuple[str, str] | None:
-    """Token overlap and substring heuristics — pure Python, no third-party libs."""
+def _keyword_match(normalised_text: str) -> tuple[str, str] | None:
+    """Check normalised text against built-in bank description keyword patterns."""
+
+def _fuzzy_match(normalised_text: str, direction: str = 'out') -> tuple[str, str] | None:
+    """Token overlap and substring heuristics — pure Python, direction-biased."""
 ```
 
 Dependencies: `categories`, `errors`
 
-Two-pass matching detail:
+Three-pass matching detail:
 
 Pass 1 — Exact match:
-- Normalise item text: `_normalise(item.raw_text)`
-- For each `Section` in `SCHEMA`, normalise each category name with the same function
-- If normalised item text == normalised category name → match
+- Normalise item text with `_normalise`
+- Compare against each normalised category name in `SCHEMA`; first exact match wins
 
-Pass 2 — Fuzzy match (only reached if pass 1 finds nothing):
-- Split normalised item text into tokens (whitespace split)
-- For each category name, split its normalised form into tokens
-- If token set overlap >= 1 AND the overlapping token(s) account for ≥ 50% of the category's
-  tokens → match
-- Additionally, if the full normalised category name is a substring of the normalised item text
-  (or vice versa) → match
-- Tie-break: prefer the category with the highest token overlap ratio; if equal, prefer the
-  category that appears earlier in `SCHEMA`
+Pass 2 — Keyword match:
+- Check normalised text for substring membership in `_KEYWORD_PATTERNS` table
+- Table maps common bank description fragments to `(section, category)` pairs
+- Examples: `"regular sav"` → Active Savings, `"trading 212"` → Stocks & Shares ISA, `"lloyds bank"` → Debt
+
+Pass 3 — Fuzzy match (only reached if passes 1–2 find nothing):
+- Split normalised item text into tokens; for each category name do the same
+- Token set overlap ≥ 1 AND ratio ≥ 50% of category tokens → candidate
+- Substring containment → candidate
+- Tie-break: highest overlap ratio, then `SCHEMA` order
+- Direction bias: for `direction='in'`, check income sections first; for `direction='out'`, check outflow sections first
 
 ---
 
@@ -373,8 +378,9 @@ class Section:
 # parser.py
 @dataclass
 class ExpenseItem:
-    raw_text: str   # description extracted from PDF (no explicit labels)
+    raw_text: str    # description extracted from PDF (no explicit labels)
     amount: float
+    direction: str   # 'in' (Money In) or 'out' (Money Out); default 'out'
 
 # grouper.py
 @dataclass
@@ -408,6 +414,7 @@ classDiagram
     class ExpenseItem {
         +str raw_text
         +float amount
+        +str direction
     }
 
     class CategorisedItem {
@@ -443,12 +450,10 @@ flowchart TD
     START[User invokes\nexpense-summary input.pdf output.csv]
     VALID{Paths valid?}
     EXIT_VAL[Print error to stderr\nsys.exit non-zero]
-    CONV[pdf_converter.convert_pdf\nAttempt pdfplumber extraction]
-    PLUMB_OK{pdfplumber\nproduced text?}
-    MINER[Fallback:\npdfminer extraction]
-    MINER_OK{pdfminer\nproduced text?}
+    CONV[pdf_converter.convert_pdf\npdf2docx conversion]
+    CONV_OK{Conversion\nproduced content?}
     CONV_ERR[Raise ConversionError]
-    TEMP[Write Markdown to\nsystem temp file]
+    TEMP[Write .docx to\nsystem temp file]
     PARSE[parser.parse_items\nScan Markdown lines]
     ITEMS_OK{Items found?}
     PARSE_ERR[Raise ParseError]
@@ -465,12 +470,9 @@ flowchart TD
     START --> VALID
     VALID -->|No| EXIT_VAL
     VALID -->|Yes| CONV
-    CONV --> PLUMB_OK
-    PLUMB_OK -->|Yes| TEMP
-    PLUMB_OK -->|No| MINER
-    MINER --> MINER_OK
-    MINER_OK -->|Yes| TEMP
-    MINER_OK -->|No| CONV_ERR
+    CONV --> CONV_OK
+    CONV_OK -->|Yes| TEMP
+    CONV_OK -->|No| CONV_ERR
     CONV_ERR --> ERR_CATCH
     TEMP --> PARSE
     PARSE --> ITEMS_OK
@@ -540,8 +542,8 @@ flowchart TD
 ```mermaid
 flowchart TD
     A[main.py calls run_pipeline]
-    B[pdf_converter creates temp .md file\ntempfile.mkstemp in sys temp dir]
-    C[temp file path stored in variable]
+    B[pdf_converter creates temp .docx file\ntempfile.mkstemp in sys temp dir]
+    C[temp .docx path stored in variable]
     D{Pipeline succeeds\nor fails?}
     E[finally block executes\nos.unlink on temp path\nif file exists]
     F[No leftover files]
@@ -559,7 +561,7 @@ flowchart TD
 | Error type | Raised in | Caught in | User message |
 |---|---|---|---|
 | `SystemExit` (invalid paths) | `main.py` | `main.py` | Descriptive path error to stderr |
-| `ConversionError` | `pdf_converter.py` | `main.py` | "Could not convert PDF: {detail}" |
+| `ConversionError` | `pdf_converter.py` | `main.py` | "Could not convert PDF to Word: {detail}" |
 | `ParseError` | `parser.py` | `main.py` | "Could not parse expenses: {detail}" |
 | `GroupingError` | `grouper.py` | `main.py` | "Could not group expenses: {detail}" |
 | Unmatched items (warning) | `grouper.py` (returned) | `main.py` | Printed to stderr; tool continues |
@@ -590,8 +592,9 @@ Warning: 2 item(s) could not be matched to a known category:
 
 | Test file | Module under test | Key scenarios |
 |---|---|---|
-| `test_parser.py` | `parser.py` | Valid lines, skipped non-matching lines, currency symbols, commas in amounts, zero-item input raises `ParseError`, malformed amounts skipped |
-| `test_grouper.py` | `grouper.py` | Exact match for every category in `SCHEMA`, case-insensitive variants, whitespace variants, unrecognised text returns `None`, fuzzy match on partial tokens |
+| `test_pdf_converter.py` | `pdf_converter.py` | Successful pdf2docx conversion, failure raises `ConversionError`, temp file created in system temp dir |
+| `test_parser.py` | `parser.py` | Table extraction with Money In/Out columns sets direction correctly, paragraph fallback works, `ParseError` on empty document |
+| `test_grouper.py` | `grouper.py` | Exact match for every category in `SCHEMA`, case-insensitive, keyword match patterns, direction-biased fuzzy match, unrecognised text returns `None` |
 | `test_summariser.py` | `summariser.py` | Per-category totals, section subtotals, `Total Income` grand total, `Total Expenditure` grand total, zero-filled categories when no items present |
 
 ### Design Decisions for Testability
@@ -659,8 +662,8 @@ def test_grand_totals():
 
 | Decision | Rationale |
 |---|---|
-| `pdfplumber` as primary, `pdfminer.six` as fallback | `pdfplumber` offers better layout and table extraction; `pdfminer.six` provides a lower-level fallback when the higher-level lib fails on unusual PDFs |
-| Intermediate Markdown string (not parsed directly from PDF objects) | Decouples the PDF extraction step from parsing; the parser can be tested with plain strings; switching PDF libraries does not affect downstream modules |
+| `pdf2docx` as the single PDF converter | Converts PDF to a structured Word document preserving table layout, which is ideal for bank statements; single-library approach simplifies the dependency chain |
+| Intermediate `.docx` file (not a text string) | Preserves table structure (Money In / Money Out columns) that plain text extraction loses; `python-docx` can read tables cell-by-cell to extract direction and amounts cleanly |
 | Temp file deleted in `finally` block | Guarantees cleanup on both success and failure paths without relying on context managers across module boundaries |
 | Two-pass matching (exact then fuzzy) in `grouper.py` | Exact matching is deterministic and O(n) in category count; fuzzy matching only runs when exact fails, keeping the common case fast and predictable |
 | `categories.py` with zero imports | Makes it safe for all other modules to import from it without circular dependency risk |

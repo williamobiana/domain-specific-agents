@@ -21,8 +21,8 @@ No subcommands. No flags beyond what is strictly needed. Exit 0 on success, non-
 
 ## Required behaviour
 
-1. **PDF → Markdown**: Accept a `.pdf` file. Convert it to an intermediate `.md` file preserving all text and numeric values.
-2. **Parse expenses**: Read the `.md` file. Detect individual expense line items with their item text/description (PDFs may not include explicit labels) and amount.
+1. **PDF → Word Document**: Accept a `.pdf` file. Convert it to an intermediate `.docx` file preserving text structure, tables, and numeric values.
+2. **Parse expenses**: Read the `.docx` file. Detect individual expense line items from Word tables (for structured bank statements) or paragraphs (for plain-text reports). Each item has a description, amount, and direction (Money In or Money Out).
 3. **Map to categories**: Match each line item to one of the known categories below. Matching logic lives in one place (`grouper.py`) and must operate on the available item text/description using keyword/heuristic matching because explicit labels may be absent.
 4. **Summarise to CSV**: Sum all amounts per category. Write a `.csv` with columns: `section`, `category`, `total_amount`. Rows appear in the canonical order defined below.
 5. **Error messages**: Print clear, human-readable errors when:

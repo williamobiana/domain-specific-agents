@@ -3,46 +3,49 @@ from __future__ import annotations
 import os
 import tempfile
 
-import pdfplumber
-from pdfminer.high_level import extract_text
-
 from src.errors import ConversionError
 
 
-def _extract_with_pdfplumber(pdf_path: str) -> str | None:
-    """Return text extracted by pdfplumber, or None if extraction yields no usable content."""
+def _convert_with_pdf2docx(pdf_path: str, docx_path: str) -> bool:
+    """Run pdf2docx conversion from pdf_path to docx_path. Return True on success."""
     try:
-        with pdfplumber.open(pdf_path) as pdf:
-            parts = [text for page in pdf.pages if (text := page.extract_text())]
-        result = "\n".join(parts)
+        from pdf2docx import Converter
+        cv = Converter(pdf_path)
+        cv.convert(docx_path, start=0, end=None)
+        cv.close()
+        return True
     except Exception:
-        return None
-    return result if result.strip() else None
+        return False
 
 
-def _extract_with_pdfminer(pdf_path: str) -> str | None:
-    """Return text extracted by pdfminer.six (fallback), or None on failure."""
+def _docx_has_content(docx_path: str) -> bool:
+    """Return True if the .docx has at least one table row or non-empty paragraph."""
     try:
-        result = extract_text(pdf_path)
+        from docx import Document
+        doc = Document(docx_path)
+        if any(
+            any(cell.text.strip() for cell in row.cells)
+            for table in doc.tables
+            for row in table.rows
+        ):
+            return True
+        return any(para.text.strip() for para in doc.paragraphs)
     except Exception:
-        return None
-    return result if result and result.strip() else None
-
-
-def _write_temp_markdown(content: str) -> str:
-    """Write content to a temp file; return the temp file path."""
-    fd, path = tempfile.mkstemp(suffix=".md")
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        f.write(content)
-    return path
+        return False
 
 
 def convert_pdf(pdf_path: str) -> str:
-    """Extract text from PDF, write to a temp Markdown file, and return the temp file path.
-    Raises ConversionError if neither pdfplumber nor pdfminer.six produces usable text."""
-    content = _extract_with_pdfplumber(pdf_path)
-    if content is None:
-        content = _extract_with_pdfminer(pdf_path)
-    if content is None:
-        raise ConversionError(f"Could not extract usable text from: {pdf_path}")
-    return _write_temp_markdown(content)
+    """Convert PDF to a temp .docx file; return the temp file path.
+    Raises ConversionError if conversion fails or yields an empty document."""
+    fd, docx_path = tempfile.mkstemp(suffix=".docx")
+    os.close(fd)
+    try:
+        if not _convert_with_pdf2docx(pdf_path, docx_path):
+            raise ConversionError(f"pdf2docx could not convert: {pdf_path}")
+        if not _docx_has_content(docx_path):
+            raise ConversionError(f"Conversion produced an empty document: {pdf_path}")
+    except ConversionError:
+        if os.path.exists(docx_path):
+            os.unlink(docx_path)
+        raise
+    return docx_path
