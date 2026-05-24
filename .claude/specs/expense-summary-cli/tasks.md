@@ -111,7 +111,7 @@
   - Write `main() -> None`: use `argparse` to accept exactly two positional arguments `input_pdf` and `output_csv`; call `validate_paths`; wrap `run_pipeline` in a `try/except` catching `ConversionError`, `ParseError`, `GroupingError`, and `OSError`; print human-readable messages to `stderr` and call `sys.exit(1)` on any caught error; call `sys.exit(0)` on success; print `stderr` warnings for any unmatched items using the format specified in the design
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 9.4, 9.5_
 
-- [ ] 10. Integration smoke test with a synthetic PDF fixture
+- [x] 10. Integration smoke test with a synthetic PDF fixture
   - Create a minimal test PDF programmatically (using `reportlab` or a pre-committed tiny binary fixture) containing at least three recognisable expense lines
   - Write `tests/test_integration.py` that calls `run_pipeline` directly with the fixture PDF path and a temp output CSV path; assert the output CSV file exists, contains the header row, contains a `Total Income` row, and contains a `Total Expenditure` row
   - Assert exit behaviour: confirm `main()` exits `0` on valid inputs by calling it via `subprocess` or by patching `sys.exit`
