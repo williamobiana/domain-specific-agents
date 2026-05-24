@@ -65,18 +65,18 @@
   - Test `group_items` assigns unmatched items to `"Uncategorised"` in the first element
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.6, 10.3_
 
-- [ ] 6. Implement `src/summariser.py` and write `tests/test_summariser.py`
-- [ ] 6.1 Implement `_build_category_totals` and `summarise`
+- [x] 6. Implement `src/summariser.py` and write `tests/test_summariser.py`
+- [x] 6.1 Implement `_build_category_totals` and `summarise`
   - Write `_build_category_totals(section_name: str, items: list[CategorisedItem]) -> list[CategoryTotal]`: for each canonical category in the section, sum amounts from matching items; default to `0.0` when no items match
   - Write `summarise(items: list[CategorisedItem]) -> list[SectionSummary]`: produce one `SectionSummary` per section in `SCHEMA` order; append an `"Uncategorised"` `SectionSummary` if any uncategorised items exist; set `subtotal` as the sum of the section's `CategoryTotal.total` values
   - Import only from `categories`
   - _Requirements: 7.1, 7.2, 7.4, 7.5, 7.6, 10.1_
 
-- [ ] 6.2 Implement `compute_grand_totals`
+- [x] 6.2 Implement `compute_grand_totals`
   - Write `compute_grand_totals(summaries: list[SectionSummary]) -> tuple[float, float]`: sum subtotals of sections in `INCOME_SECTIONS` for `total_income`; sum subtotals of sections in `OUTFLOW_SECTIONS` for `total_expenditure`
   - _Requirements: 7.3, 7.5_
 
-- [ ] 6.3 Write `tests/test_summariser.py`
+- [x] 6.3 Write `tests/test_summariser.py`
   - Test that a single `CategorisedItem` for `"Salary"` produces a `SectionSummary` for `"Regular Inflows"` with `subtotal == item.amount`
   - Test that two items for the same category sum correctly in `CategoryTotal.total`
   - Test that all canonical categories appear in every `SectionSummary`, zero-filled when no items match
