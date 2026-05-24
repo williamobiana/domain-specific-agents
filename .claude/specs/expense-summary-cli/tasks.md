@@ -22,18 +22,18 @@
   - Verify zero imports in this file
   - _Requirements: 5.5, 5.6, 6.1, 6.2, 10.1_
 
-- [ ] 4. Implement `src/parser.py` and write `tests/test_parser.py`
-- [ ] 4.1 Implement `_normalise_amount` and `_parse_line`
+- [x] 4. Implement `src/parser.py` and write `tests/test_parser.py`
+- [x] 4.1 Implement `_normalise_amount` and `_parse_line`
   - Write `_normalise_amount(raw: str) -> float` stripping `£`, `$`, `€`, commas, and optional whitespace before converting to `float`; raise `ValueError` on unparseable input
   - Write `_parse_line(line: str) -> ExpenseItem | None` using the regex pattern `[£$€]?\s*[\d,]+(\.\d{1,2})?` to locate the amount token; treat all remaining text as the description; return `None` if the pattern is absent or the description is empty
   - _Requirements: 4.1, 4.4, 4.5_
 
-- [ ] 4.2 Implement `parse_items`
+- [x] 4.2 Implement `parse_items`
   - Write `parse_items(markdown_text: str) -> list[ExpenseItem]` iterating over lines, calling `_parse_line`, collecting non-`None` results
   - Raise `ParseError` (imported from `errors`) when the result list is empty
   - _Requirements: 4.1, 4.2, 4.3, 9.2_
 
-- [ ] 4.3 Write `tests/test_parser.py`
+- [x] 4.3 Write `tests/test_parser.py`
   - Test that a markdown string with three valid expense lines and one invalid line returns exactly three `ExpenseItem` objects
   - Test `_normalise_amount` with `£3,500.00`, `$1,200`, `€ 99.9`, and a bare `42` — assert correct `float` values
   - Test that lines without any amount token are skipped (no error)
