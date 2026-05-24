@@ -1,20 +1,20 @@
 # Implementation Plan — expense-summary
 
-- [ ] 1. Set up project structure and foundation modules
+- [x] 1. Set up project structure and foundation modules
   - Create the directory layout: `src/`, `tests/`, `requirements.txt`, `README.md`
   - Create empty `__init__.py` files in `src/` and `tests/`
   - Create `src/errors.py` with `ConversionError`, `ParseError`, and `GroupingError` exception classes
   - Create `requirements.txt` with `pdfplumber`, `pdfminer.six`, and `pytest`
   - _Requirements: 9.3_
 
-- [ ] 2. Implement the canonical category schema
-- [ ] 2.1 Write `src/categories.py` with the full `Section` dataclass and `SCHEMA` constant
+- [x] 2. Implement the canonical category schema
+- [x] 2.1 Write `src/categories.py` with the full `Section` dataclass and `SCHEMA` constant
   - Define the `Section` dataclass with `name: str` and `categories: list[str]`
   - Declare all 6 sections and 21 categories in canonical order matching the schema in `product.md`
   - Export `INCOME_SECTIONS` and `OUTFLOW_SECTIONS` list constants
   - _Requirements: 5.1, 5.3_
 
-- [ ] 2.2 Write tests for `categories.py`
+- [x] 2.2 Write tests for `categories.py`
   - Assert `SCHEMA` contains exactly 6 sections
   - Assert each section contains its expected category names (all 21 total)
   - Assert `INCOME_SECTIONS` and `OUTFLOW_SECTIONS` together cover all section names and have no overlap
