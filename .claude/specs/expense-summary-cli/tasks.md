@@ -84,7 +84,7 @@
   - Test that uncategorised items produce an appended `"Uncategorised"` `SectionSummary`
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 10.3_
 
-- [ ] 7. Implement `src/writer.py`
+- [x] 7. Implement `src/writer.py`
   - Write `_fmt(amount: float) -> str` returning a 2-decimal-place string
   - Write `_write_section(writer, summary: SectionSummary) -> None`: emit one row per `CategoryTotal` then a `Subtotal` row using `_fmt` for amounts
   - Write `write_csv(summaries, total_income, total_expenditure, output_path) -> None`: open the output path in UTF-8 write mode with `csv.writer`; write the header `section,category,total_amount`; iterate `summaries`, calling `_write_section` for each; after all income sections emit the `Total Income` grand-total row; after all outflow sections emit the `Total Expenditure` grand-total row; append any `"Uncategorised"` summary last; use only `csv` stdlib
