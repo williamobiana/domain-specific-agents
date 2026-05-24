@@ -97,17 +97,17 @@
   - Write `convert_pdf(pdf_path: str) -> str`: call `_extract_with_pdfplumber` first; if `None`, call `_extract_with_pdfminer`; if still `None`, raise `ConversionError`; otherwise call `_write_temp_markdown`, return the temp file path
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.6, 9.1, 11.2, 11.6_
 
-- [ ] 9. Implement `src/main.py` — CLI entry point and pipeline orchestration
-- [ ] 9.1 Implement `validate_paths`
+- [x] 9. Implement `src/main.py` — CLI entry point and pipeline orchestration
+- [x] 9.1 Implement `validate_paths`
   - Write `validate_paths(input_path: str, output_path: str) -> None`: check the input file exists and ends with `.pdf`; check the output directory exists and is writable; call `sys.exit(1)` with a descriptive `stderr` message if either check fails
   - _Requirements: 1.1, 2.1, 2.2, 2.3, 1.5_
 
-- [ ] 9.2 Implement `run_pipeline`
+- [x] 9.2 Implement `run_pipeline`
   - Write `run_pipeline(input_path: str, output_path: str) -> None`: call `convert_pdf` inside a `try/finally` that unconditionally deletes the temp markdown file via `os.unlink`; call `parse_items` with the temp file's text content; call `group_items`; call `summarise`; call `compute_grand_totals`; call `write_csv`; return `unmatched_items` to the caller (or handle warnings here)
   - Ensure no `print` or `sys.exit` calls are made in any imported module; all such calls stay within `main.py`
   - _Requirements: 3.4, 3.5, 1.2, 1.3, 11.6_
 
-- [ ] 9.3 Implement `main` and wire up error handling
+- [x] 9.3 Implement `main` and wire up error handling
   - Write `main() -> None`: use `argparse` to accept exactly two positional arguments `input_pdf` and `output_csv`; call `validate_paths`; wrap `run_pipeline` in a `try/except` catching `ConversionError`, `ParseError`, `GroupingError`, and `OSError`; print human-readable messages to `stderr` and call `sys.exit(1)` on any caught error; call `sys.exit(0)` on success; print `stderr` warnings for any unmatched items using the format specified in the design
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 9.4, 9.5_
 
