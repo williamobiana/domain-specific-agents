@@ -90,7 +90,7 @@
   - Write `write_csv(summaries, total_income, total_expenditure, output_path) -> None`: open the output path in UTF-8 write mode with `csv.writer`; write the header `section,category,total_amount`; iterate `summaries`, calling `_write_section` for each; after all income sections emit the `Total Income` grand-total row; after all outflow sections emit the `Total Expenditure` grand-total row; append any `"Uncategorised"` summary last; use only `csv` stdlib
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 11.4_
 
-- [ ] 8. Implement `src/pdf_converter.py`
+- [x] 8. Implement `src/pdf_converter.py`
   - Write `_extract_with_pdfplumber(pdf_path: str) -> str | None`: open the PDF with `pdfplumber`; concatenate text from all pages; return `None` if result is empty or whitespace-only
   - Write `_extract_with_pdfminer(pdf_path: str) -> str | None`: use `pdfminer.six` high-level `extract_text`; return `None` on empty or exception
   - Write `_write_temp_markdown(content: str) -> str`: use `tempfile.mkstemp(suffix=".md")` to create a temp file in the system temp dir; write `content` to it; return the file path
