@@ -11,12 +11,12 @@
   - Write `ConversionError`, `ParseError`, and `GroupingError` as plain `Exception` subclasses with docstrings matching the design
   - _Requirements: 9.1, 9.2, 9.3_
 
-- [ ] 3. Implement `src/categories.py` — canonical schema
-- [ ] 3.1 Define the `Section` frozen dataclass
+- [x] 3. Implement `src/categories.py` — canonical schema
+- [x] 3.1 Define the `Section` frozen dataclass
   - Declare `Section(name: str, categories: list[str])` as a `@dataclass(frozen=True)`
   - _Requirements: 6.1, 6.2, 10.1_
 
-- [ ] 3.2 Declare `SCHEMA`, `INCOME_SECTIONS`, and `OUTFLOW_SECTIONS`
+- [x] 3.2 Declare `SCHEMA`, `INCOME_SECTIONS`, and `OUTFLOW_SECTIONS`
   - Populate `SCHEMA` with all six sections and their categories in canonical order exactly as specified
   - Set `INCOME_SECTIONS` and `OUTFLOW_SECTIONS` to the correct section-name lists
   - Verify zero imports in this file
