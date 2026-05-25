@@ -2,7 +2,7 @@
 
 ## Language & Runtime
 
-- **Python 3.10+** — f-strings, `match`/`case`, and `argparse` with `BooleanOptionalAction` are all available
+- **Python 3.8+** — f-strings, `match`/`case`, and `argparse` with `BooleanOptionalAction` are all available
 - No virtual environment is prescribed; `requirements.txt` is the only dependency manifest
 
 ## Dependencies
