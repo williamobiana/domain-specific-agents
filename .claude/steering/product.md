@@ -1,60 +1,51 @@
----
-name: product
-description: Product scope and constraints for the expense summary CLI tool. Apply to all planning, design, and implementation decisions.
----
+# Product Brief: Bank Statement to Expense Report CLI Tool
 
-## Product
+## 1. Executive Summary
+A command-line interface (CLI) tool that transforms **raw bank statement PDFs** into a structured expense report CSV. The tool extracts transactions, applies user‑defined classification rules (keywords + transaction types), groups them into a fixed category hierarchy, calculates section subtotals and grand totals, and exports a strictly formatted CSV.
 
-A single, local CLI tool that reads a PDF expense report and produces a grouped CSV summary, structured around a fixed set of known categories.
+## 2. Problem Statement
+Bank statements do not contain expense categories like "Rent" or "Salary" — only payer/payee names, transaction types (FPI, FPO, DD, DEB, etc.), and amounts. Manually categorising hundreds of transactions is tedious and error‑prone.
 
-## Goal
+Users need a tool that:
+- Extracts transactions from a PDF bank statement.
+- Applies **custom rules** to map each transaction to a predefined category.
+- Groups categories into sections (Regular Inflows, Irregular Outflows, Assets, etc.).
+- Calculates section subtotals and grand totals (Total Income, Total Expenditure).
+- Exports a standardised CSV for financial analysis.
 
-Convert a personal PDF expense report into a clean CSV: one row per category, with the category name and its summed total — organised by section in a defined order.
+## 3. Target Users
+- Individuals tracking personal finances from bank statements.
 
-## CLI interface
+## 4. Core Requirements
 
-```
-expense-summary input.pdf output.csv
-```
+### 4.1 Inputs
+| Input | Description |
+|-------|-------------|
+| `statement.pdf` | Bank statement PDF (text‑based, not scanned). |
+| `rules.yml` | User‑defined mapping from transaction patterns to categories. |
 
-No subcommands. No flags beyond what is strictly needed. Exit 0 on success, non-zero on failure.
+### 4.2 Output
+- A single CSV file with the **exact category order** defined below.
+- Missing categories = `0`.
+- Section subtotals and grand totals automatically calculated.
 
-## Required behaviour
-
-1. **PDF → Word Document**: Accept a `.pdf` file. Convert it to an intermediate `.docx` file preserving text structure, tables, and numeric values.
-2. **Parse expenses**: Read the `.docx` file. Detect individual expense line items from Word tables (for structured bank statements) or paragraphs (for plain-text reports). Each item has a description, amount, and direction (Money In or Money Out).
-3. **Map to categories**: Match each line item to one of the known categories below. Matching logic lives in one place (`grouper.py`) and must operate on the available item text/description using keyword/heuristic matching because explicit labels may be absent.
-4. **Summarise to CSV**: Sum all amounts per category. Write a `.csv` with columns: `section`, `category`, `total_amount`. Rows appear in the canonical order defined below.
-5. **Error messages**: Print clear, human-readable errors when:
-   - Input file is missing or not a `.pdf`
-   - PDF cannot be read or converted
-   - No expense rows can be parsed
-   - A parsed row cannot be matched to any known category (warn, do not crash)
-   - Output path cannot be written
-
-## Canonical category schema
-
-The report always uses this structure. Categories and section totals must appear in this exact order in the CSV output.
-
-```
-Section: Regular Inflows
+### 4.3 Fixed Category Structure (CSV Output Order)
+**Inflows**
+- Section: Regular Inflows
   - Salary
-  - Total Regular Inflows       ← section subtotal row
-
-Section: Irregular Inflows
-  - Carry Over
+  - Total Regular Inflows ← subtotal
+- Section: Irregular Inflows
   - Unexpected / Refund
   - Loan
-  - Total Irregular Inflows     ← section subtotal row
-
-Section: Asset Liquidation
+  - Total Irregular Inflows ← subtotal
+- Section: Asset Liquidation
   - Savings
   - Stocks & Shares
-  - Total Asset Liquidation     ← section subtotal row
+  - Total Asset Liquidation ← subtotal
+- **Total Income** ← grand total of all inflow sections
 
-  Total Income                  ← grand total of all inflow sections
-
-Section: Regular Outflows
+**Outflows & Assets**
+- Section: Regular Outflows
   - Rent
   - Bill - Council Tax
   - Bill - Electricity & Gas
@@ -62,40 +53,124 @@ Section: Regular Outflows
   - Food Supplies
   - Debt
   - Car & Gas
-  - Total Regular Outflows      ← section subtotal row
-
-Section: Irregular Outflows
+  - Total Regular Outflows ← subtotal
+- Section: Irregular Outflows
   - Charity / Donations
   - Gifts, Entertainment & Misc
   - Sundry
   - Holidays & Travel
   - Education
   - Eating Out
-  - Total Irregular Outflows    ← section subtotal row
-
-Section: Assets
+  - Total Irregular Outflows ← subtotal
+- Section: Assets
   - Active Savings
   - Lifetime ISA
   - Stocks & Shares ISA
   - Dividend Portfolio
-  - Total Asset Expenditure     ← section subtotal row
+  - Total Asset Expenditure ← subtotal
+- **Total Expenditure** ← grand total of all outflow sections
 
-  Total Expenditure             ← grand total of all outflow sections
+### 4.4 Functional Requirements
+
+| ID | Description |
+|----|-------------|
+| FR-01 | Extract transactions from PDF: date, description, type (e.g., FPI, FPO, DD, DEB), money in, money out, balance. |
+| FR-02 | Load user‑defined mapping rules from a config file (`rules.yml`). |
+| FR-03 | Apply rules to each transaction: match by **keywords** (case‑insensitive) and/or **transaction type**. |
+| FR-04 | Each rule maps to one of the 17 categories (Salary, Rent, Active Savings, etc.). |
+| FR-05 | If multiple rules match, use the first match (priority order = rule order in file). |
+| FR-06 | If no rule matches, flag transaction as `unmapped` and optionally skip or assign to "Sundry". |
+| FR-07 | Sum all amounts per category. `Money In` (FPI, BGC, etc.) = positive contribution; `Money Out` (FPO, DEB, DD) = negative. |
+| FR-08 | Calculate section subtotals by summing their child categories. |
+| FR-09 | Calculate `Total Income` = sum(Regular Inflows + Irregular Inflows + Asset Liquidation). |
+| FR-10 | Calculate `Total Expenditure` = sum(Regular Outflows + Irregular Outflows + Assets). |
+| FR-11 | **Self‑transfer detection** : track transactions where description matches account holder name and type as food supplies. |
+| FR-12 | Generate CSV with exact row order from section 4.3. |
+| FR-13 | Write unmapped transactions to a separate log file for user review. |
+
+### 4.5 Non-Functional Requirements
+- **CLI‑first:** No GUI; all operations via terminal.
+- **Performance:** Process a typical 3‑page statement with 50+ transactions in < 3 seconds.
+- **Portable:** Single Python script with `pdfplumber` and `pyyaml` as dependencies.
+- **Error handling:** Clear error messages for missing rules file, malformed PDF, or zero transactions found.
+
+## 5. User Interface (CLI)
+
+### Basic usage
+```bash
+expense-parser statement.pdf --rules my_rules.yml --output report.csv
 ```
 
-Section subtotals and grand totals are **computed by the tool**, not read from the PDF. If the PDF contains its own subtotal rows, they are used only for validation (optional), not as the authoritative value.
+### Full options
 
-## Hard constraints
+| Argument                   | Description                                                 | Default                 |
+| --------                   | -------                                                     | -------                 |
+| `input.pdf`                | Bank statement PDF                                          | required                |
+| `--rules`, `-r`            | Path to mapping rules file (YAML or CSV)                    | `rules.yml`             |
+| `--output`, `-o`           | Output CSV path                                             | `expense_report.csv`    |
+| `--unmapped-log`           | Write unmapped transactions to this file                    | `unmapped.log`          |
+| `--exclude-self-transfers` | Ignore transactions where description matches account holder| `true`                  | 
+| `--strict`                 | Fail if any transaction remains unmapped                    | `false`                 |
+| `--version`                | Show version                                                |  —                      |
 
-- Local execution only — no network calls, no cloud services
-- No GUI, no web server, no database
-- No user accounts or authentication
-- One executable entry point
-- Intermediate files (e.g. the `.md`) are temporary; clean them up or make their location obvious
+		
 
-## Non-goals
+### Example session
+```bash
 
-- Dynamic or user-configurable categories — the schema above is fixed
-- Multi-currency conversion
-- Receipt image OCR
-- Any UI beyond the terminal
+$ expense-parser Statement_2026_4.pdf --rules my_rules.yml --output april_2026.csv
+
+Loading rules from my_rules.yml... done (12 rules).
+Parsing PDF... found 42 transactions.
+Classifying transactions...
+  - Matched: 38 (90.5% of total value)
+  - Unmapped: 4 (written to unmapped.log)
+  - Self-transfers excluded: 3
+Calculating subtotals... done.
+CSV written to april_2026.csv
+
+Unmapped transactions (4):
+  - 07 Apr 26 | GRACE AKANNI | FPO | €500.00
+  - 14 Apr 26 | MAUTON TOLLUOPE HU | FPO | €200.00
+  - (review unmapped.log for details)
+```
+
+## 6. Rules File Format (Example)
+```
+# my_rules.yml
+rules:
+  - category: "Salary"
+    keywords: ["NATIONAL SERV", "SALARY", "WAGE", "PAYROLL"]
+    types: ["FPI", "BGC"]
+    
+  - category: "Active Savings"
+    keywords: ["HLAM REGULAR SAVIN", "REGULAR SAVER", "LLOYDS"]
+    types: ["DD"]
+    
+  - category: "Stocks & Shares ISA"
+    keywords: ["TRADING 212", "VANGUARD", "HARGREAVES"]
+    types: ["DEB"]
+    
+  - category: "Gifts, Entertainment & Misc"
+    keywords: ["SOMTOCHUKWU NCHEKW"]
+    types: ["FPO"]
+    
+  - category: "Sundry"
+    keywords: []  # catch-all for unmatched
+    types: []
+    default: true
+```
+
+## 7. Glossary
+| Term           | Definition                                                      |
+|----------------|------------------------------------------------------------------|
+| FPI            | Faster Payment In (money received)                               |
+| FPO            | Faster Payment Out (money sent)                                  |
+| DD             | Direct Debit                                                    |
+| DEB            | Debit Card transaction                                          |
+| BGC            | Bank Giro Credit                                                |
+| Self-transfer  | Moving money between own accounts (excluded from totals)         |
+| Rule           | A combination of keywords and transaction types that maps to a category |
+| Unmapped       | A transaction that matched no rule                              |
+| Section        | A group of related categories (e.g., Regular Outflows)           |
+| Subtotal       | Sum of all categories within a section                          |
