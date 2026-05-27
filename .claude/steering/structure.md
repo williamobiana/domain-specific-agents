@@ -10,7 +10,7 @@
 ├── README.md
 ├── .gitignore
 ├── src/
-│   └── statement_to_csv/
+│   └── lloyds-expense/
 │       ├── __init__.py
 │       ├── __main__.py
 │       ├── cli.py

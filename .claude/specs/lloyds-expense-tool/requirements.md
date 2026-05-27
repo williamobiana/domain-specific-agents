@@ -44,7 +44,7 @@ The Lloyds Expense Tool is a command-line application that transforms a Lloyds B
 #### Acceptance Criteria
 
 1. WHEN the `--rules` option is supplied THEN the system SHALL load the YAML rules file from the specified path using `ruamel.yaml`, preserving comments.
-2. WHEN `--rules` is not supplied THEN the system SHALL look for a rules file at the default location `~/.config/statement-to-csv/rules.yaml`; if neither is present, the system SHALL exit with code 4 and display a usage message.
+2. WHEN `--rules` is not supplied THEN the system SHALL look for a rules file at the default location `~/.config/lloyds-expense/rules.yaml`; if neither is present, the system SHALL exit with code 4 and display a usage message.
 3. WHEN the rules file is absent or unreadable THEN the system SHALL exit with code 4 and display a descriptive error message.
 4. WHEN the rules file is loaded THEN the system SHALL validate that every rule contains exactly one of `match` (exact string) or `match_regex` (regular expression pattern).
 5. WHEN the rules file is loaded THEN the system SHALL validate that every rule's `category` value belongs to the closed schema enumeration defined in `schema.py`.
@@ -169,8 +169,8 @@ The Lloyds Expense Tool is a command-line application that transforms a Lloyds B
 
 #### Acceptance Criteria
 
-1. WHEN the tool is invoked THEN the system SHALL accept the following signature: `statement-to-csv <statement.pdf> [--rules <rules.yaml>] --out <budget.csv> [--force] [--report-unmatched <path>]`.
-2. WHEN `--rules` is not supplied THEN the system SHALL fall back to `~/.config/statement-to-csv/rules.yaml` as specified in R3.2.
+1. WHEN the tool is invoked THEN the system SHALL accept the following signature: `lloyds-expense <statement.pdf> [--rules <rules.yaml>] --out <budget.csv> [--force] [--report-unmatched <path>]`.
+2. WHEN `--rules` is not supplied THEN the system SHALL fall back to `~/.config/lloyds-expense/rules.yaml` as specified in R3.2.
 3. WHEN `--out` is not supplied THEN the system SHALL exit with code 4 and display a usage message.
 4. WHEN `--help` is requested THEN the system SHALL display all options, defaults, and exit codes via `typer`.
 5. WHEN the tool exits THEN the system SHALL use only the following exit codes: 0 (success), 1 (unmatched transactions), 2 (reconciliation mismatch), 3 (parse error), 4 (bad input).
