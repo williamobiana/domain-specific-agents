@@ -134,9 +134,8 @@ The Lloyds Expense Tool is a command-line application that transforms a Lloyds B
 4. WHEN a category has no transactions in the statement THEN the system SHALL still emit its row with a value of `0.00`.
 5. WHEN subtotals are computed THEN the system SHALL sum the `Decimal` values of all line items within the section, quantized to two decimal places.
 6. WHEN grand totals are computed THEN the system SHALL sum the `Decimal` values of all section subtotals within the respective inflow or outflow group.
-7. WHEN the `--out` file already exists THEN the system SHALL refuse to overwrite it unless `--force` is supplied.
-8. WHEN `--force` is supplied and the output file already exists THEN the system SHALL overwrite the existing file silently. The `--force` flag affects file overwrite behaviour only; it does not modify any other behaviour in the tool.
-9. WHEN the CSV is written THEN the system SHALL use the Python `csv` stdlib module with `csv.QUOTE_MINIMAL`, UTF-8 encoding, and `\n` line endings.
+7. WHEN the `--out` file already exists THEN the system SHALL overwrite it silently. The output CSV is a pure function of the PDF and the rules file and is therefore regenerable; users who want versioned outputs SHALL use period-stamped filenames (e.g., `budget-2026-04.csv`) or store outputs under version control.
+8. WHEN the CSV is written THEN the system SHALL use the Python `csv` stdlib module with `csv.QUOTE_MINIMAL`, UTF-8 encoding, and `\n` line endings.
 
 ---
 
@@ -169,7 +168,7 @@ The Lloyds Expense Tool is a command-line application that transforms a Lloyds B
 
 #### Acceptance Criteria
 
-1. WHEN the tool is invoked THEN the system SHALL accept the following signature: `lloyds-expense <statement.pdf> [--rules <rules.yaml>] --out <budget.csv> [--force] [--report-unmatched <path>]`.
+1. WHEN the tool is invoked THEN the system SHALL accept the following signature: `lloyds-expense <statement.pdf> [--rules <rules.yaml>] --out <budget.csv> [--report-unmatched <path>]`.
 2. WHEN `--rules` is not supplied THEN the system SHALL fall back to `~/.config/lloyds-expense/rules.yaml` as specified in R3.2.
 3. WHEN `--out` is not supplied THEN the system SHALL exit with code 4 and display a usage message.
 4. WHEN `--help` is requested THEN the system SHALL display all options, defaults, and exit codes via `typer`.
