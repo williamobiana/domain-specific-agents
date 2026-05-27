@@ -36,7 +36,7 @@ Explicitly **not** used:
 ## CLI shape
 
 ```
-statement-to-csv <statement.pdf> --rules rules.yaml --out budget.csv
+lloyds-expense <statement.pdf> --rules rules.yaml --out budget.csv
 ```
 
 - `<statement.pdf>` — required positional, path to one Lloyds Classic PDF.
@@ -58,7 +58,7 @@ rules:
 
   - match_regex: "^OMASIRICHI OKWU"
     direction: out
-    category: "Sundry"
+    category: "Food Supplies"
 
   - match: "HLAM REGULAR SAVIN"
     type: "DD"
@@ -91,6 +91,5 @@ A single exception hierarchy rooted at `StatementToCsvError`, with subclasses fo
 
 ## Platforms
 
-- Primary: macOS and Linux.
-- Windows: best-effort, tested in CI but no manual smoke-testing.
+- Primary: Linux.
 - No platform-specific code paths; everything goes through `pathlib`.
