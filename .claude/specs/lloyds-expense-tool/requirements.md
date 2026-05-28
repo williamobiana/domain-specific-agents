@@ -28,12 +28,18 @@ The Lloyds Expense Tool is a command-line application that transforms a Lloyds B
 
 #### Acceptance Criteria
 
-1. WHEN a valid Lloyds Classic PDF is processed THEN the system SHALL extract each transaction's date, description, type code, money-in amount, money-out amount, and running balance.
-2. WHEN a transaction row in the PDF contains a money-in value THEN the system SHALL record a positive `Decimal` amount in the money-in field and leave money-out empty.
-3. WHEN a transaction row in the PDF contains a money-out value THEN the system SHALL record a positive `Decimal` amount in the money-out field and leave money-in empty.
-4. WHEN monetary values are parsed THEN the system SHALL use `decimal.Decimal` for all arithmetic to avoid floating-point rounding errors.
-5. WHEN parsing completes THEN the system SHALL also extract the statement's reported Money In total, Money Out total, opening balance, closing balance, and the statement period (start date and end date) for use in reconciliation and output.
-6. IF the transaction table cannot be located in the PDF THEN the system SHALL exit with code 3 and report the specific parse failure.
+1. WHEN a valid Lloyds Classic PDF is processed THEN the system SHALL extract each transaction's date, description, type code, amount, direction, and running balance, returning them as a list of frozen Transaction dataclasses on a Statement object.
+2. WHEN a transaction row in the PDF contains a money-in value THEN the system SHALL record amount as a positive `Decimal` and direction as "in".
+3. WHEN a transaction row in the PDF contains a money-out value THEN the system SHALL record amount as a positive `Decimal` and direction as "out". Outflows SHALL NOT be stored as negative numbers; direction is the single source of truth for inflow versus outflow.
+4. WHEN monetary values are parsed THEN the system SHALL use `decimal.Decimal` for all amounts, constructed via Decimal(str(...)) from the cleaned string form. Floats SHALL NOT appear anywhere in the parsing pipeline.
+5. WHEN amounts in the PDF contain thousand-separator commas (e.g., "1,000.00") THEN the system SHALL strip them before constructing the Decimal.
+6. WHEN transaction dates appear in the PDF with a two-digit year (e.g., "01 Apr 26") THEN the system SHALL expand the year using the four-digit year present in the statement period extracted under R2.6. Two-digit-year expansion SHALL NOT use the current system date.
+7. WHEN the transaction table spans multiple pages THEN the system SHALL concatenate rows into a single list preserving document order (top-to-bottom within a page, then page-by-page).
+8. WHEN non-transaction tabular content appears in the PDF (such as the transaction-type-code legend on the final page) THEN the system SHALL ignore it and not emit Transaction records from it.
+9. WHEN descriptions are truncated by the bank in the PDF (visible as cut-off names, e.g., "SOMTOCHUKWU NCHEKW") THEN the system SHALL store the truncated form verbatim. Rules in the YAML file are expected to match against the truncated string as it appears in the statement, not the original full name.
+10. WHEN transactions are returned THEN the system SHALL preserve their document order (the order they appear in the PDF). The parser SHALL NOT reorder by date, amount, or any other field.
+11. IF the transaction table cannot be located in the PDF THEN the system SHALL exit with code 3 and report the specific parse failure, including the page number where parsing failed if determinable.
+12. IF the PDF parses but produces zero Transaction records THEN the parser SHALL still return a valid Statement object with an empty transactions list; the zero-transaction handling defined in R8 then applies.
 
 ---
 
