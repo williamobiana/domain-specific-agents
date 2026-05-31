@@ -49,15 +49,15 @@ The Lloyds Expense Tool is a command-line application that transforms a Lloyds B
 
 #### Acceptance Criteria
 
-1. WHEN the `--rules` option is supplied THEN the system SHALL load the YAML rules file from the specified path using `ruamel.yaml`, preserving comments.
+1. WHEN the `--rules` option is supplied THEN the system SHALL load the YAML rules file from the specified path using `PyYAML` (`yaml.safe_load`). Comment preservation is not required because the tool never writes to the rules file — the user is the sole editor.
 2. WHEN `--rules` is not supplied THEN the system SHALL look for a rules file at the default location `~/.config/lloyds-expense/rules.yaml`; if neither is present, the system SHALL exit with code 4 and display a usage message.
 3. WHEN the rules file is absent or unreadable THEN the system SHALL exit with code 4 and display a descriptive error message.
-4. WHEN the rules file is loaded THEN the system SHALL validate that every rule contains exactly one of `match` (exact string) or `match_regex` (regular expression pattern).
-5. WHEN the rules file is loaded THEN the system SHALL validate that every rule's `category` value belongs to the closed schema enumeration defined in `schema.py`.
-6. WHEN the rules file contains two or more rules with identical `match`, `type`, and `direction` fields THEN the system SHALL exit with code 4, list the duplicate rules by line number, and refuse to proceed.
-7. WHEN a rule contains an invalid `category` value THEN the system SHALL exit with code 4, list every offending rule, and refuse to proceed.
-8. WHEN a rule specifies a `type` field THEN the system SHALL treat it as an optional Lloyds transaction-type code filter applied in addition to the description match.
-9. WHEN a rule specifies a `direction` field THEN the system SHALL accept only `in` or `out`; any other value SHALL cause exit with code 4.
+4. WHEN the rules file is loaded THEN the system SHALL validate that every rule has exactly one matcher: either `match` (a non-empty exact string) or `match_regex` (a compilable regular expression pattern). In the internal `Rule` representation, this SHALL be encoded as a tagged union (`ExactMatch | RegexMatch`), not as two nullable fields.
+5. WHEN the rules file contains two or more rules whose matcher, `type`, and `direction` fields are all identical (treating `None` and absent as equivalent, and comparing regex matchers by source string) THEN the system SHALL exit with code 4, list the duplicate rules by line number, and refuse to proceed.
+6. WHEN a rule specifies a `type` field THEN the system SHALL validate it against the closed set of known Lloyds type codes (FPO, FPI, DD, DEB, BGC, BP, CHG, CHQ, COR, CPT, DEP, FEE, MPI, MPO, PAY, SO, TFR). Unknown type codes SHALL cause exit with code 4.
+7. WHEN a rule's `match_regex` value cannot be compiled as a Python regular expression THEN the system SHALL exit with code 4 and display the regex error position.
+8. WHEN the YAML file's top-level structure is not a mapping containing a `rules` key whose value is a list THEN the system SHALL exit with code 4 with a descriptive error.
+9. WHEN rules are returned from the loader THEN the list SHALL preserve the order of rules in the source YAML file, and each `Rule` SHALL carry the line number where it was defined for use in error messages.
 10. IF the rules file contains malformed YAML THEN the system SHALL exit with code 4 and display the YAML parse error location.
 
 ---

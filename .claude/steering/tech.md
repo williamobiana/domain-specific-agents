@@ -17,7 +17,7 @@
 |---|---|---|
 | PDF text extraction | **`pdfplumber`** | Best-in-class for tabular PDFs; preserves column structure that Lloyds statements rely on. Avoids the fragile text-positioning gymnastics that `pypdf` / `pdfminer.six` force on you for tables. |
 | CLI argument parsing | **`typer`** | Type-hint-driven, generates `--help` automatically, plays well with `rich` for error output. Standard library `argparse` would also work but typer is lower-friction for the size of this tool. |
-| YAML rules file | **`ruamel.yaml`** | Round-trippable and preserves user comments — important because the rules file is hand-edited. `PyYAML` would lose comments on any future "write back" feature. |
+| YAML rules file | **`PyYAML`** (`yaml.safe_load`) | The rules file is read-only from the tool's perspective — the user is the sole editor. Comment-preserving round-trip libraries like `ruamel.yaml` solve a problem the tool doesn't have. If a future feature ever writes back to the rules file (e.g., an interactive rule builder), swap the dependency then. |
 | Decimal money | **`decimal.Decimal`** (stdlib) | Floats are banned for any monetary value. All amounts parsed as `Decimal`, all arithmetic in `Decimal`, all output formatted from `Decimal`. |
 | CSV output | **`csv`** (stdlib) | Output is a fixed, simple shape; no need for pandas. |
 | Console output / errors | **`rich`** | Coloured unmatched-transaction reports and reconciliation diffs read far better than plain text when the user is fixing their rules file. |
