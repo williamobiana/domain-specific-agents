@@ -38,7 +38,7 @@ The output CSV always contains these rows in this order, regardless of whether a
 
 **Inflows**
 - Regular Inflows: Salary → subtotal
-- Irregular Inflows: Carry Over, Unexpected / Refund, Loan → subtotal
+- Irregular Inflows: Unexpected / Refund, Loan → subtotal
 - Asset Liquidation: Savings, Stocks & Shares → subtotal
 - **Total Income** (grand total)
 
@@ -64,6 +64,6 @@ These are the user's standing classifications for recurring counterparties on th
 - **`HLAM REGULAR SAVIN`** (DD, money out) → **Active Savings**. Multiple entries per month, treated as savings rather than expenditure.
 - **`Trading 212`** (DEB, money out) → **Stocks & Shares ISA** (or Dividend Portfolio, user-specified per rule).
 - **`LLOYDS BANK PLC`** (DD, money out) — needs case-by-case rules; could be a credit-card bill (Debt) or a fee. Not safely auto-classifiable from description alone.
-- **Money in from `OMASIRICHI OKWU BO` / `SOMTOCHUKWU NCHEKW` / similar personal-name FPIs** → **Carry Over** by default (self-transfers returning, or transfers from known contacts). Genuine refunds belong in **Unexpected / Refund** and should be added as more specific rules when they occur.
+- **Money in from `OMASIRICHI OKWU BO` / `SOMTOCHUKWU NCHEKW` / similar personal-name FPIs** → **Unexpected / Refund** by default (self-transfers returning, or transfers from known contacts). Genuine refunds belong in **Unexpected / Refund** and should be added as more specific rules when they occur.
 
 This list will grow. New counterparties added to the user's life mean new rules; the steering doc is updated when the *intent* changes (e.g. "Trading 212 is now my dividend portfolio, not my ISA"), not when a new one-off transaction appears.

@@ -68,7 +68,7 @@ The Lloyds Expense Tool is a command-line application that transforms a Lloyds B
 
 #### Acceptance Criteria
 
-1. WHEN comparing transaction descriptions to rules THEN the system SHALL apply the following normalisation to both sides before comparison: trim leading and trailing whitespace, collapse internal whitespace runs to a single space, and treat all variants of the hyphen-minus character as equivalent. Case sensitivity is preserved.
+1. WHEN comparing transaction descriptions to rules THEN the system SHALL apply the following normalisation to both sides before comparison: trim leading and trailing whitespace, collapse internal whitespace runs to a single space, and treat all variants of the hyphen-minus character as equivalent.
 2. WHEN classifying each transaction THEN the system SHALL first attempt a normalised exact match against all rules that use the `match` field.
 3. WHEN no exact match is found THEN the system SHALL attempt a regex match against all rules that use the `match_regex` field, in the order they appear in the rules file. Regex matching is applied against the normalised description.
 4. WHEN a rule specifies a `type` filter THEN the system SHALL only assign the rule if the transaction's type code matches.
@@ -121,7 +121,7 @@ The Lloyds Expense Tool is a command-line application that transforms a Lloyds B
    - Line items: Salary
    - Subtotal: Regular Inflows subtotal
    - Section header: Irregular Inflows
-   - Line items: Carry Over, Unexpected / Refund, Loan
+   - Line items: Unexpected / Refund, Loan
    - Subtotal: Irregular Inflows subtotal
    - Section header: Asset Liquidation
    - Line items: Savings, Stocks & Shares
