@@ -115,7 +115,7 @@ The Lloyds Expense Tool is a command-line application that transforms a Lloyds B
 #### Acceptance Criteria
 
 1. WHEN all transactions are classified and reconciliation passes THEN the system SHALL write a CSV to the path specified by `--out`.
-2. WHEN the CSV is written THEN the system SHALL prepend a metadata header recording the statement period (start date and end date), the account sort code, and the account number, before the schema rows.
+2. WHEN the CSV is written THEN the system SHALL prepend a metadata header recording the statement period (start date and end date), before the schema rows.
 3. WHEN the CSV is written THEN the system SHALL emit schema rows in the following fixed order, with no row omitted even if its value is zero:
    - Section header: Regular Inflows
    - Line items: Salary
