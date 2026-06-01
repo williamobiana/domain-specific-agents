@@ -156,19 +156,7 @@ The Lloyds Expense Tool is a command-line application that transforms a Lloyds B
 
 ---
 
-### Requirement 9: Determinism
-
-**User Story:** As an account holder, I want every run with the same inputs to produce an identical output file, so that I can reliably diff outputs and trust that results are reproducible.
-
-#### Acceptance Criteria
-
-1. WHEN the tool is run twice with identical PDF, rules file, and CLI options THEN the system SHALL produce byte-identical CSV output on both runs.
-2. WHEN transactions share the same date and category THEN the system SHALL order them in document order to ensure deterministic output.
-3. WHEN any source of non-determinism (e.g., dict iteration, timestamps, hostnames) is present in the pipeline THEN the system SHALL eliminate it so that the output is stable across Python interpreter restarts and across machines.
-
----
-
-### Requirement 10: CLI Interface
+### Requirement 9: CLI Interface
 
 **User Story:** As an account holder, I want a simple command-line interface with clear options, so that I can run the tool with minimal typing and understand available options from the help text.
 
@@ -183,7 +171,7 @@ The Lloyds Expense Tool is a command-line application that transforms a Lloyds B
 
 ---
 
-### Requirement 11: Module Boundaries
+### Requirement 10: Module Boundaries
 
 **User Story:** As a developer maintaining the tool, I want clearly separated modules with single responsibilities, so that each component can be tested and modified in isolation.
 
@@ -201,7 +189,7 @@ The Lloyds Expense Tool is a command-line application that transforms a Lloyds B
 
 ---
 
-### Requirement 12: Error Reporting Quality
+### Requirement 11: Error Reporting Quality
 
 **User Story:** As an account holder, I want error messages to be clear and actionable, so that I know exactly what went wrong and how to fix it.
 
@@ -215,7 +203,7 @@ The Lloyds Expense Tool is a command-line application that transforms a Lloyds B
 
 ---
 
-### Requirement 13: Known Classification Rules (Seed Data)
+### Requirement 12: Known Classification Rules (Seed Data)
 
 **User Story:** As an account holder, I want an example rules file to ship with the tool covering known mappings for my account's recurring transactions, so that common transactions are classified correctly from the first run.
 
@@ -229,7 +217,7 @@ The Lloyds Expense Tool is a command-line application that transforms a Lloyds B
 
 ---
 
-### Requirement 14: Non-Functional — Code Quality
+### Requirement 13: Non-Functional — Code Quality
 
 **User Story:** As a developer maintaining the tool, I want enforced code quality standards, so that the codebase remains readable and type-safe over time.
 
@@ -239,16 +227,4 @@ The Lloyds Expense Tool is a command-line application that transforms a Lloyds B
 2. WHEN code is committed THEN the system SHALL pass `mypy --strict` type checking with no ignored errors.
 3. WHEN tests are run THEN the system SHALL achieve at least 90% line coverage on the non-CLI modules (`schema`, `errors`, `parser`, `rules`, `classifier`, `reconciler`, `writer`) using `pytest`.
 4. WHEN the project is set up THEN the system SHALL be managed with `uv` and declare all dependencies in a `pyproject.toml`.
-
----
-
-### Requirement 15: Non-Functional — Security and Privacy
-
-**User Story:** As an account holder, I want to be confident that the tool does not transmit or persist my financial data, so that my banking information stays on my own machine.
-
-#### Acceptance Criteria
-
-1. WHEN the tool processes a PDF THEN the system SHALL not make any network requests.
-2. WHEN the tool runs THEN the system SHALL not write any data to locations other than the file specified by `--out`, the file specified by `--report-unmatched` (if supplied), and any stderr/stdout console output.
-3. WHEN the tool exits THEN the system SHALL not leave any temporary files on disk.
 
