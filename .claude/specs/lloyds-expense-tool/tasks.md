@@ -10,7 +10,7 @@
   - _Requirements: R10.1, R13.1, R13.2, R13.3, R13.4_
 
 - [ ] 2. Implement `schema.py` — budget shape definition
-- [ ] 2.1 Define `Category` and `Section` enums
+- [x] 2.1 Define `Category` and `Section` enums
   - Write the `Category(enum.Enum)` with all 22 leaf category members matching the exact display names from the CSV schema
   - Write the `Section(enum.Enum)` with all 6 section members
   - _Requirements: R7.3, R10.1, R10.3_
