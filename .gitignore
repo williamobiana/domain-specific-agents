@@ -1,11 +1,36 @@
-.pytest_cache/
+# Python
 __pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
 src/__pycache__/
 tests/__pycache__/
-*.pyc
+
+# Virtual environments
 .venv/
-uv.lock (optional — commit or not depending on policy)
+venv/
+env/
+
+
+# Testing
+.pytest_cache/
 .coverage
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

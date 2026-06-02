@@ -1,6 +1,6 @@
 # Implementation Plan: Lloyds Expense Tool
 
-- [ ] 1. Set up project structure and tooling
+- [x] 1. Set up project structure and tooling
   - Create the `src/lloyds_expense/` package directory with `__init__.py` and `__main__.py`
   - Create `tests/` and `tests/fixtures/` directories
   - Create `pyproject.toml` declaring all runtime dependencies (`pdfplumber`, `PyYAML`, `typer`, `rich`) and dev dependencies (`pytest`, `pytest-cov`, `mypy`, `ruff`) managed with `uv`
