@@ -21,20 +21,20 @@ graph TB
     User([User]) -->|"lloyds-expense statement.pdf --rules rules.yaml --out budget.csv"| CLI
 
     subgraph "src/lloyds_expense/"
-        CLI[cli.py\ntyper app\nI/O boundary]
-        Parser[parser.py\npdfplumber\nPDF → Statement]
-        Rules[rules.py\nPyYAML\nYAML → Rule list]
-        Classifier[classifier.py\npure function\ntransactions × rules → ClassificationResult]
-        Reconciler[reconciler.py\npure function\nClassificationResult → ReconciliationReport]
-        Writer[writer.py\npure function\nClassificationResult → CSV file]
-        Schema[schema.py\nCategory enum\nrow order constants]
-        Errors[errors.py\nexception hierarchy]
+        CLI["cli.py<br/>typer app<br/>I/O boundary"]
+        Parser["parser.py<br/>pdfplumber<br/>PDF → Statement"]
+        Rules["rules.py<br/>PyYAML<br/>YAML → Rule list"]
+        Classifier["classifier.py<br/>pure function<br/>transactions × rules → ClassificationResult"]
+        Reconciler["reconciler.py<br/>pure function<br/>ClassificationResult → ReconciliationReport"]
+        Writer["writer.py<br/>pure function<br/>ClassificationResult → CSV file"]
+        Schema["schema.py<br/>Category enum<br/>row order constants"]
+        Errors["errors.py<br/>exception hierarchy"]
     end
 
     PDF[(statement.pdf)] -->|Path| Parser
     YAML[(rules.yaml)] -->|Path| Rules
     Parser -->|Statement| CLI
-    Rules -->|list[Rule]| CLI
+    Rules -->|"list[Rule]"| CLI
     CLI -->|transactions, rules| Classifier
     Classifier -->|ClassificationResult| CLI
     CLI -->|ClassificationResult, statement totals| Reconciler
