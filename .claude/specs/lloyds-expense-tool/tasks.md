@@ -5,7 +5,8 @@
   - Create `tests/` and `tests/fixtures/` directories
   - Create `pyproject.toml` declaring all runtime dependencies (`pdfplumber`, `PyYAML`, `typer`, `rich`) and dev dependencies (`pytest`, `pytest-cov`, `mypy`, `ruff`) managed with `uv`
   - Configure `ruff` (lint + format) and `mypy --strict` sections in `pyproject.toml`
-  - Configure `pytest` with `--cov=lloyds_expense --cov-fail-under=90 --cov-omit="*/cli.py"` in `pyproject.toml`
+  - Configure `pytest` with `--cov=lloyds_expense --cov-fail-under=90` in `pyproject.toml`
+  - In `pyproject.toml`, add a `[tool.coverage.run]` section with `omit = ["*/cli.py"]` to exclude the CLI module from the coverage floor (the `--cov-omit` flag does not exist in `pytest-cov`; omission is configured here)
   - _Requirements: R10.1, R13.1, R13.2, R13.3, R13.4_
 
 - [ ] 2. Implement `schema.py` — budget shape definition
@@ -15,10 +16,10 @@
   - _Requirements: R7.3, R10.1, R10.3_
 
 - [ ] 2.2 Define `SchemaRow` dataclass and `SCHEMA_ORDER` constant
-  - Write the `SchemaRow(frozen=True)` dataclass with `kind`, `section`, `category`, and `label` fields
+  - Write the `SchemaRow(frozen=True)` dataclass with `kind: Literal["section_header", "line_item", "subtotal", "grand_total"]`, `section: Section | None`, `category: Category | None`, `label: str`, and `group: Literal["income", "expenditure"] | None` fields. The `group` field is populated on `section_header`, `subtotal`, and `grand_total` rows; it tells the writer which subtotals to sum for each grand total. Inflow sections (Regular Inflows, Irregular Inflows, Asset Liquidation) carry `group="income"`; outflow sections (Regular Outflows, Irregular Outflows, Assets) carry `group="expenditure"`. The `Total Income` grand total has `group="income"`; `Total Expenditure` has `group="expenditure"`. Line items leave `group=None` (their group is derivable from their section).
   - Write the `SCHEMA_ORDER: list[SchemaRow]` constant encoding all 34 rows (section headers, 22 line items, 6 subtotals, 2 grand totals) in the exact fixed output order from R7.3
   - Implement `category_display_name(category: Category) -> str` and `section_for_category(category: Category) -> Section` helpers
-  - Write `test_schema.py` asserting enum completeness (22 categories, 6 sections), `SCHEMA_ORDER` length (34 rows), and that every `Category` member appears exactly once as a line item
+  - Write `test_schema.py` asserting enum completeness (22 categories, 6 sections), `SCHEMA_ORDER` length (34 rows), that every `Category` member appears exactly once as a line item, and that the `group` field is correctly assigned on every section header, subtotal, and grand-total row
   - _Requirements: R7.3, R7.5, R7.6, R10.3_
 
 - [ ] 3. Implement `errors.py` — typed exception hierarchy
@@ -37,14 +38,14 @@
   - _Requirements: R2.1, R2.3, R2.4, R10.5_
 
 - [ ] 4.2 Implement metadata extraction from PDF first page
-  - Write `_extract_metadata(page_text: str, four_digit_year: int) -> dict` that uses regex to parse the statement period (`DD Mon YY to DD Mon YY` format), opening balance, closing balance, Money In total, and Money Out total from the first page text
-  - Ensure statement period year is stored as a four-digit integer for later two-digit year expansion
+  - Write `_extract_metadata(page_text: str) -> dict` that uses regex to parse the statement period (`DD Mon YY to DD Mon YY` format), opening balance, closing balance, Money In total, and Money Out total from the first page text
+  - Store **both** the period start and period end years as four-digit integers. The statement period may cross a year boundary (e.g., `15 Dec 25 to 14 Jan 26`); both years must be available to the row parser for correct two-digit year expansion.
   - Raise `ParseError` with descriptive message when metadata cannot be located
-  - _Requirements: R2.6, R6.3, R10.5_
+  - _Requirements: R2.6, R10.5_
 
 - [ ] 4.3 Implement transaction table extraction and row parsing
   - Write `_is_transaction_table(table: list) -> bool` that checks the header row for the expected column set `["Date", "Description", "Type", "Money in", "Money out", "Balance"]` (case-insensitive, normalised)
-  - Write `_parse_transaction_row(row: list, four_digit_year: int) -> Transaction` that positionally extracts each column, strips thousand-separator commas from amounts, constructs `Decimal(str(cleaned))`, sets `direction` based on which amount column is populated, and expands the two-digit year using `four_digit_year` (never `datetime.today()`)
+  - Write `_parse_transaction_row(row: list, period_start: date, period_end: date) -> Transaction` that positionally extracts each column, strips thousand-separator commas from amounts, constructs `Decimal(str(cleaned))`, sets `direction` based on which amount column is populated, and expands the two-digit year using **cross-year-aware selection**: if the statement period spans two calendar years, assign the four-digit year by matching the transaction's month against the period — months ≥ `period_start.month` use `period_start.year`, otherwise use `period_end.year`. If the period sits within a single year, use that year directly. The current system date SHALL NOT be used.
   - Write `_is_non_transaction_row(row: list) -> bool` to identify and skip type-code legend rows
   - Raise `ParseError` with page number when a row cannot be parsed
   - _Requirements: R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.8, R2.9, R2.10, R2.11_
@@ -52,14 +53,19 @@
 - [ ] 4.4 Implement `parse_statement(path: Path) -> Statement`
   - Open the PDF with `pdfplumber`, iterate pages in document order, concatenate all valid transaction table rows across pages, construct the `Statement` dataclass
   - Handle unreadable / password-protected PDFs by catching `pdfplumber` exceptions and re-raising as `ParseError`
-  - Return `Statement` with an empty `transactions` tuple when zero rows are found (per R2.12)
-  - _Requirements: R1.2, R1.3, R1.5, R2.7, R2.11, R2.12, R10.5_
+  - Return `Statement` with an empty `transactions` tuple when zero rows are found AND `money_in_total == Decimal("0.00")` AND `money_out_total == Decimal("0.00")` (per R8.1 — a genuinely empty statement)
+  - **Raise `ParseError`** when zero rows are found BUT either `money_in_total` or `money_out_total` is non-zero (per R8.2 — a parser fault, not a reconciliation issue; the statement claims activity but the parser produced no rows)
+  - **Verify the balance equation** as the final step before returning: `opening_balance + money_in_total - money_out_total == closing_balance` using exact `Decimal` equality. Raise `ParseError` on failure with the four values and the computed difference. This check lives in the parser, not the reconciler — a balance mismatch indicates a parser fault, not a classification fault.
+  - _Requirements: R1.2, R1.3, R1.5, R2.7, R2.11, R2.12, R6.3, R8.1, R8.2, R10.5_
 
 - [ ] 4.5 Write `test_parser.py` unit tests
   - Create `tests/fixtures/statement_minimal.pdf` — a minimal synthetic Lloyds Classic PDF with 3 transactions (1 money-in, 2 money-out) including one amount with a thousand-separator comma and a two-digit year date
   - Create `tests/fixtures/statement_full.pdf` — a realistic two-page PDF with ~20 transactions including a type-code legend table on the final page
-  - Write tests: correct transaction count, correct `Decimal` amounts, correct `direction` values, correct date year expansion, balance equation holds, thousand-separator stripping, legend table produces no `Transaction` records, non-PDF file raises `ParseError`, empty statement returns valid `Statement` with empty tuple
-  - _Requirements: R2.1–R2.12, R1.2, R1.3, R1.5_
+  - Create `tests/fixtures/statement_cross_year.pdf` — a synthetic statement whose period spans a year boundary (e.g., `15 Dec 25 to 14 Jan 26`) with transactions in both Dec and Jan
+  - Create `tests/fixtures/statement_empty_with_totals.pdf` — a synthetic statement with zero transaction rows but a non-zero `Money In` total (used to verify R8.2)
+  - Create `tests/fixtures/statement_bad_balance.pdf` — a synthetic statement where `opening + money_in - money_out != closing_balance` (used to verify R6.3 in the parser)
+  - Write tests: correct transaction count; correct `Decimal` amounts; correct `direction` values; correct date year expansion; balance equation enforced (fixture with bad balance raises `ParseError`); thousand-separator stripping; legend table produces no `Transaction` records; non-PDF file raises `ParseError`; empty statement with zero totals returns valid `Statement` with empty tuple (R8.1); empty statement with non-zero totals raises `ParseError` (R8.2); cross-year statement assigns the correct year to December and January transactions independently
+  - _Requirements: R2.1–R2.12, R1.2, R1.3, R1.5, R6.3, R8.1, R8.2_
 
 - [ ] 5. Implement `rules.py` — YAML to validated Rule objects
 - [ ] 5.1 Define `ExactMatch`, `RegexMatch`, and `Rule` frozen dataclasses
@@ -74,7 +80,7 @@
   - Validate top-level structure: must be a mapping with a `rules` key whose value is a list; raise `RulesConfigError` otherwise
   - For each rule entry: validate exactly one of `match` / `match_regex` present, validate `category` against `Category` enum, validate `type_code` against the known set when present, compile regex patterns and catch compile errors
   - Normalise `ExactMatch.value` using the same whitespace and hyphen normalisation as classification
-  - Detect duplicate rules (same matcher + `type_code` + `direction`); collect all duplicates and raise `RulesConfigError` with all duplicate line numbers
+  - Detect duplicate rules. Two rules are duplicates when their `type_code`, `direction`, and matcher are all equal. Matcher equality uses the **normalised matcher key**: for `ExactMatch`, the key is `("exact", normalised_value)`; for `RegexMatch`, the key is `("regex", source_string)`. Do NOT compare `re.Pattern` objects directly — `re.Pattern` equality is by identity, which means two compiled-but-identical regexes would never compare equal. Collect all duplicate groups and raise `RulesConfigError` listing every duplicate's line number.
   - Preserve YAML file order; attach `line_number` (1-based) to each `Rule`
   - _Requirements: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R9.2_
 
@@ -111,13 +117,14 @@
 - [ ] 7.2 Implement `reconcile(result, statement) -> ReconciliationReport`
   - Determine which `Category` members are inflows vs outflows by using `schema.section_for_category`; inflow sections are `REGULAR_INFLOWS`, `IRREGULAR_INFLOWS`, `ASSET_LIQUIDATION`; outflow sections are `REGULAR_OUTFLOWS`, `IRREGULAR_OUTFLOWS`, `ASSETS`
   - Sum `transaction.amount` for all matched transactions whose category is an inflow category (`actual_in`) and all whose category is an outflow category (`actual_out`)
-  - Verify the balance equation `opening_balance + money_in_total - money_out_total == closing_balance` using `Decimal` equality; raise `ParseError` on failure (not `ReconciliationError`)
   - Return `ReconciliationReport(ok=True)` when `actual_in == money_in_total` and `actual_out == money_out_total`; return `ReconciliationReport(ok=False)` with diff fields otherwise
-  - _Requirements: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R10.8_
+  - The reconciler does **not** verify the balance equation (`opening + in - out == closing`) — that check belongs to the parser (Task 4.4) because a failure indicates a parser fault, not a classification fault. The reconciler is concerned only with whether classified totals match statement totals.
+  - The reconciler does **not** raise exceptions; it always returns a `ReconciliationReport`. The CLI decides what to do with `report.ok == False`.
+  - _Requirements: R6.1, R6.2, R6.4, R6.5, R6.6, R10.8_
 
 - [ ] 7.3 Write `test_reconciler.py` unit tests
-  - Write tests: returns `ok=True` when computed totals match exactly; returns `ok=False` with correct `money_in_diff` when in-total differs by `Decimal("0.01")`; returns `ok=False` with correct `money_out_diff` when out-total differs; raises `ParseError` when balance equation fails; all arithmetic uses `Decimal` (assert no `float` types in report)
-  - _Requirements: R6.1–R6.6_
+  - Write tests: returns `ok=True` when computed totals match exactly; returns `ok=False` with correct `money_in_diff` when in-total differs by `Decimal("0.01")`; returns `ok=False` with correct `money_out_diff` when out-total differs; reconciler never raises (verified by passing a `Statement` with bad balance equation — the reconciler should still return a report, because the parser is now responsible for catching that case); all arithmetic uses `Decimal` (assert no `float` types in report)
+  - _Requirements: R6.1, R6.2, R6.4, R6.5, R6.6_
 
 - [ ] 8. Implement `writer.py` — ClassificationResult to CSV
 - [ ] 8.1 Implement category total accumulation
@@ -127,7 +134,7 @@
 - [ ] 8.2 Implement `write_csv(result, statement, out) -> None`
   - Open `out` for writing with `encoding="utf-8"`, `newline=""`, and use `csv.writer` with `csv.QUOTE_MINIMAL`
   - Write the metadata header rows with `statement.period_start` and `statement.period_end`
-  - Iterate `SCHEMA_ORDER` once: for `section_header` rows write label with empty value column; for `line_item` rows look up category total (default `Decimal("0.00")`) and write label + `str(value.quantize(Decimal("0.01")))`; for `subtotal` rows sum the line item values accumulated since the last section header; for `grand_total` rows sum all section subtotals in the inflow or outflow group
+  - Iterate `SCHEMA_ORDER` once: for `section_header` rows write label with empty value column; for `line_item` rows look up category total (default `Decimal("0.00")`) and write label + `str(value.quantize(Decimal("0.01")))`; for `subtotal` rows sum the line item values accumulated since the last section header; for `grand_total` rows sum all `subtotal` row values whose `SchemaRow.group` equals the grand total's own `group` field (`"income"` or `"expenditure"`)
   - Overwrite `out` silently if it already exists
   - _Requirements: R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R7.7, R7.8, R10.9_
 
@@ -150,14 +157,14 @@
   - Call `parser.parse_statement`, catch `ParseError`, format error with `rich` to stderr, exit 3
   - Call `rules.load_rules`, catch `RulesConfigError`, format error with `rich` to stderr, exit 4
   - Call `classifier.classify`; if `result.unmatched` is non-empty: format `rich` table to stderr (date, description, type, amount, direction columns), write plain-text report to `--report-unmatched` path if supplied, exit 1
-  - Call `reconciler.reconcile`; if `report.ok` is `False`: format `rich` reconciliation diff (expected, actual, difference) to stderr, exit 2; if `ParseError` raised: format to stderr, exit 3
+  - Call `reconciler.reconcile`; if `report.ok` is `False`: format `rich` reconciliation diff (expected, actual, difference) to stderr, exit 2. The reconciler no longer raises `ParseError` — balance-equation failures are caught upstream in `parser.parse_statement` and surface via the `ParseError` handler on the parser call above.
   - Call `writer.write_csv`; exit 0 on success
   - Ensure all `rich` output goes to stderr and stdout remains clean
   - _Requirements: R5.1, R5.2, R5.3, R5.4, R6.4, R6.5, R6.6, R8.1, R8.2, R9.5, R9.6, R10.2, R11.1–R11.5_
 
 - [ ] 9.3 Write `test_cli.py` integration tests using `typer.testing.CliRunner`
-  - Write tests: happy path with `statement_minimal.pdf` + `rules_example.yaml` → exit 0, CSV written to `tmp_path`; unmatched transactions (rules file missing one rule) → exit 1, rich table on stderr, no CSV written; reconciliation mismatch (tampered statement totals fixture) → exit 2, diff on stderr; non-existent PDF → exit 4 with descriptive error; missing `--out` → exit 4 with usage message; `--report-unmatched <path>` with unmatched transactions → exit 1, report file written; `--help` → exit 0, all options listed; zero-transaction statement with zero totals → exit 0 with all-zero CSV
-  - _Requirements: R5.1–R5.4, R8.1, R8.2, R9.1–R9.6, R1.1–R1.5_
+  - Write tests: happy path with `statement_minimal.pdf` + `rules_example.yaml` → exit 0, CSV written to `tmp_path`; unmatched transactions (rules file missing one rule) → exit 1, rich table on stderr, no CSV written; reconciliation mismatch (tampered statement totals fixture) → exit 2, diff on stderr; non-existent PDF → exit 4 with descriptive error; missing `--out` → exit 4 with usage message; `--report-unmatched <path>` with unmatched transactions → exit 1, report file written; `--help` → exit 0, all options listed; zero-transaction statement with zero totals → exit 0 with all-zero CSV (R8.1); **zero-transaction statement with non-zero totals → exit 3 with `ParseError` on stderr** (R8.2 — this exercises the new parser-side check rather than the reconciler); statement with broken balance equation → exit 3 with `ParseError` on stderr (R6.3 surfacing from parser)
+  - _Requirements: R5.1–R5.4, R6.3, R8.1, R8.2, R9.1–R9.6, R1.1–R1.5_
 
 - [ ] 10. Create example rules file and seed data
   - Create `examples/rules.example.yaml` with the following specific rules:
@@ -172,7 +179,7 @@
 - [ ] 11. Enforce code quality and coverage gates
   - Run `ruff check` and `ruff format --check` across all source files; fix any reported issues
   - Run `mypy --strict src/lloyds_expense/` and resolve all type errors, including any `tuple[Transaction, ...]` forward references in `errors.py`
-  - Run `pytest --cov=lloyds_expense --cov-fail-under=90 --cov-omit="*/cli.py"` and add tests for any uncovered lines in `schema`, `errors`, `parser`, `rules`, `classifier`, `reconciler`, `writer` until the 90% floor is met
+  - Run `pytest --cov=lloyds_expense --cov-fail-under=90` (the omit list for `cli.py` is configured in `pyproject.toml` under `[tool.coverage.run]`) and add tests for any uncovered lines in `schema`, `errors`, `parser`, `rules`, `classifier`, `reconciler`, `writer` until the 90% floor is met
   - Confirm all exit-code paths in `cli.py` are exercised by `test_cli.py`
   - _Requirements: R13.1, R13.2, R13.3_
 
