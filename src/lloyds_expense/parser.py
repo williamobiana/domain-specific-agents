@@ -17,14 +17,22 @@ from lloyds_expense.errors import ParseError
 # Regex constants used by _extract_metadata and table helpers
 # ---------------------------------------------------------------------------
 
-# Matches: "15 Dec 25 to 14 Jan 26" — case-insensitive, allows variable spacing
+# Month pattern: accepts both abbreviated ("Apr") and full ("April") month names
+_MONTH_PAT = (
+    r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?"
+    r"|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+)
+
+# Matches: "15 Dec 25 to 14 Jan 26" OR "01 April 2026 to 30 April 2026"
 _PERIOD_RE = re.compile(
-    r"(\d{1,2})\s+"
-    r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+"
-    r"(\d{2})\s+to\s+"
-    r"(\d{1,2})\s+"
-    r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+"
-    r"(\d{2})",
+    r"(\d{1,2})\s+(" + _MONTH_PAT + r")\s+(\d{4}|\d{2})\s+to\s+"
+    r"(\d{1,2})\s+(" + _MONTH_PAT + r")\s+(\d{4}|\d{2})",
+    re.IGNORECASE,
+)
+
+# Matches: "Balance on 01 April 2026 £58,920.71" (real Lloyds PDF format)
+_BALANCE_ON_RE = re.compile(
+    r"Balance\s+on\s+\d{1,2}\s+\S+\s+\d{2,4}\s+£([\d,]+\.\d{2})",
     re.IGNORECASE,
 )
 
@@ -43,13 +51,42 @@ _EXPECTED_HEADERS: frozenset[str] = frozenset(
     {"date", "description", "type", "money in", "money out", "balance"}
 )
 
-# Labels for monetary metadata fields
-_AMOUNT_LABELS: list[tuple[str, str]] = [
-    ("opening_balance", "opening balance"),
-    ("closing_balance", "closing balance"),
+# Labels for monetary totals (money in / money out)
+_TOTAL_LABELS: list[tuple[str, str]] = [
     ("money_in_total", "money in"),
     ("money_out_total", "money out"),
 ]
+
+# ---------------------------------------------------------------------------
+# Regex for garbled text lines produced by real Lloyds PDFs
+#
+# Real Lloyds PDFs overlay accessibility column-header text on top of cell
+# values, so pdfplumber merges them into garbled strings such as:
+#   "D0ate 1 Apr 26 DGescription RACE AKANNI TFype PO Moneyb Ilna n(k£.) 500.00Money Out (£) 58,920.71Balance (£)"
+#
+# The structure is: D{d1}ate {d2} {Mon} {yy}  D{c}escription {desc}  T{c}ype {type}  <amount fields>
+# Reconstruction: date = "{d1}{d2} {Mon} {yy}", description = "{c}{desc}", type = "{c}{type}"
+# ---------------------------------------------------------------------------
+
+_GARBLED_TX_MONEY_OUT_RE = re.compile(
+    r"D(\d)ate (\d) (\w{3}) (\d{2})"   # date: d1 + d2 + Mon + yy
+    r" D(\w)escription (.+?) "           # desc: first-char + rest
+    r"T(\w)ype (\w+)"                    # type: first-char + rest
+    r" \S+ \S+ \S+\)"                    # garbled blank Money In cell
+    r" ([\d,]+\.\d{2})Money Out \(£\)"  # money-out amount
+    r" ([\d,]+\.\d{2})Balance \(£\)",   # running balance
+    re.IGNORECASE,
+)
+
+_GARBLED_TX_MONEY_IN_RE = re.compile(
+    r"D(\d)ate (\d) (\w{3}) (\d{2})"   # date: d1 + d2 + Mon + yy
+    r" D(\w)escription (.+?) "           # desc: first-char + rest
+    r"T(\w)ype (\w+)"                    # type: first-char + rest
+    r" ([\d,]+\.\d{2})Money In \(£\)"  # money-in amount
+    r" \S+ \S+ \S+\)\."                  # garbled blank Money Out cell
+    r" ([\d,]+\.\d{2})Balance \(£\)",   # running balance
+    re.IGNORECASE,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -89,13 +126,28 @@ class Statement:
 # ---------------------------------------------------------------------------
 
 
-def _expand_two_digit_year(yy: str) -> int:
-    """Expand a two-digit year string to a four-digit int using Python's century rules.
+def _expand_year(year_str: str) -> int:
+    """Expand a two- or four-digit year string to a four-digit int.
 
-    Uses datetime.strptime with %y format — Python treats 00-68 as 2000-2068
-    and 69-99 as 1969-1999.  The current system date is never consulted.
+    Four-digit strings are returned as-is.  Two-digit strings use Python's
+    %y rules: 00-68 → 2000-2068, 69-99 → 1969-1999.
     """
-    return datetime.strptime(f"01 Jan {yy}", "%d %b %y").year
+    if len(year_str) == 4:
+        return int(year_str)
+    return datetime.strptime(f"01 Jan {year_str}", "%d %b %y").year
+
+
+def _month_to_int(month_str: str) -> int:
+    """Convert an abbreviated or full month name to its month number (1-12).
+
+    Works by taking the first three characters of the name, which is the same
+    for both "Apr" and "April", "Jan" and "January", etc.
+    """
+    abbrs = {
+        "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+        "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+    }
+    return abbrs[month_str[:3].lower()]
 
 
 def _parse_labeled_amount(page_text: str, label: str) -> Decimal | None:
@@ -136,11 +188,11 @@ def _extract_metadata(page_text: str) -> dict[str, Any]:
     end_mon = period_match.group(5)
     end_yy = period_match.group(6)
 
-    start_year = _expand_two_digit_year(start_yy)
-    end_year = _expand_two_digit_year(end_yy)
+    start_year = _expand_year(start_yy)
+    end_year = _expand_year(end_yy)
 
-    period_start = datetime.strptime(f"{start_day:02d} {start_mon} {start_yy}", "%d %b %y").date()
-    period_end = datetime.strptime(f"{end_day:02d} {end_mon} {end_yy}", "%d %b %y").date()
+    period_start = date(start_year, _month_to_int(start_mon), start_day)
+    period_end = date(end_year, _month_to_int(end_mon), end_day)
 
     # --- Sort code and account number ---
     sort_code_match = _SORT_CODE_RE.search(page_text)
@@ -149,14 +201,31 @@ def _extract_metadata(page_text: str) -> dict[str, Any]:
     account_num_match = _ACCOUNT_NUM_RE.search(page_text)
     account_number = account_num_match.group(1) if account_num_match else ""
 
-    # --- Monetary totals ---
+    # --- Monetary totals (money in / money out) ---
     amounts: dict[str, Decimal] = {}
-    for field_key, label in _AMOUNT_LABELS:
+    for field_key, label in _TOTAL_LABELS:
         value = _parse_labeled_amount(page_text, label)
         if value is None:
-            # Capitalise first letter of the label for the error message
             raise ParseError(f"Cannot locate {label} on first page")
         amounts[field_key] = value
+
+    # --- Opening / closing balances ---
+    # Try labeled format first ("Opening balance: X", "Closing balance: X").
+    # Real Lloyds PDFs use "Balance on DD Month YYYY £X" instead — but those
+    # date-stamped balances are END-OF-DAY values for the first/last days of the
+    # period, not the true opening balance.  So for the date-stamped format we
+    # derive opening_balance from the equation (CB - MI + MO) using the already-
+    # extracted totals, which is always consistent.
+    opening_balance = _parse_labeled_amount(page_text, "opening balance")
+    closing_balance = _parse_labeled_amount(page_text, "closing balance")
+    if opening_balance is None or closing_balance is None:
+        balance_matches = _BALANCE_ON_RE.findall(page_text)
+        if len(balance_matches) >= 2:
+            closing_balance = Decimal(balance_matches[1].replace(",", ""))
+            opening_balance = closing_balance - amounts["money_in_total"] + amounts["money_out_total"]
+        else:
+            label = "opening balance" if opening_balance is None else "closing balance"
+            raise ParseError(f"Cannot locate {label} on first page")
 
     return {
         "sort_code": sort_code,
@@ -165,8 +234,8 @@ def _extract_metadata(page_text: str) -> dict[str, Any]:
         "period_end": period_end,
         "period_start_year": start_year,
         "period_end_year": end_year,
-        "opening_balance": amounts["opening_balance"],
-        "closing_balance": amounts["closing_balance"],
+        "opening_balance": opening_balance,
+        "closing_balance": closing_balance,
         "money_in_total": amounts["money_in_total"],
         "money_out_total": amounts["money_out_total"],
     }
@@ -278,6 +347,64 @@ def _parse_transaction_row(
         raise ParseError(f"Cannot parse transaction row: {row}", page=page) from exc
 
 
+def _parse_garbled_tx_line(
+    line: str,
+    period_start: date,
+    period_end: date,
+    page: int | None = None,
+) -> Transaction | None:
+    """Try to parse a garbled transaction line from a real Lloyds PDF.
+
+    Real Lloyds PDFs overlay accessibility column-header text on cell values,
+    producing lines like:
+        "D0ate 1 Apr 26 DGescription RACE AKANNI TFype PO Moneyb Ilna n(k£.) 500.00Money Out (£) 58,920.71Balance (£)"
+
+    Returns None when the line doesn't match either pattern (header, separator, etc.).
+    Raises ParseError when a match is found but data cannot be parsed.
+    """
+    for pattern, direction in (
+        (_GARBLED_TX_MONEY_IN_RE, "in"),
+        (_GARBLED_TX_MONEY_OUT_RE, "out"),
+    ):
+        m = pattern.search(line)
+        if m is None:
+            continue
+
+        d1, d2, mon, yy = m.group(1), m.group(2), m.group(3), m.group(4)
+        desc_char, desc_rest = m.group(5), m.group(6)
+        type_char, type_rest = m.group(7), m.group(8)
+        amount_str = m.group(9)
+        balance_str = m.group(10)
+
+        date_str = f"{d1}{d2} {mon} {yy}"
+        description = desc_char + desc_rest
+        type_code = type_char + type_rest
+
+        try:
+            tx_date_parsed = datetime.strptime(date_str, "%d %b %y")
+            tx_month = tx_date_parsed.month
+            if period_start.year != period_end.year:
+                tx_year = period_start.year if tx_month >= period_start.month else period_end.year
+            else:
+                tx_year = period_start.year
+            tx_date = date(tx_year, tx_month, tx_date_parsed.day)
+            amount = Decimal(amount_str.replace(",", ""))
+            running_balance = Decimal(balance_str.replace(",", ""))
+        except Exception as exc:
+            raise ParseError(f"Cannot parse garbled transaction line: {line!r}", page=page) from exc
+
+        return Transaction(
+            date=tx_date,
+            description=description,
+            type_code=type_code,
+            amount=amount,
+            direction=direction,  # type: ignore[arg-type]
+            running_balance=running_balance,
+        )
+
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Task 4.4 — parse_statement entry point
 # ---------------------------------------------------------------------------
@@ -334,6 +461,19 @@ def parse_statement(path: Path) -> Statement:
                         continue
                     tx = _parse_transaction_row(row, period_start, period_end, page=page_num)
                     transactions.append(tx)
+
+        # Fallback: real Lloyds PDFs overlay column headers on cell text so
+        # extract_tables() cannot detect rows.  Parse the raw text instead.
+        if not transactions:
+            for page_index, page in enumerate(pdf.pages):
+                page_num = page_index + 1
+                page_text = page.extract_text() or ""
+                for line in page_text.splitlines():
+                    tx = _parse_garbled_tx_line(
+                        line.strip(), period_start, period_end, page=page_num
+                    )
+                    if tx is not None:
+                        transactions.append(tx)
 
     # --- Step 4: Zero-transaction edge cases ---
     zero_totals = money_in_total == Decimal("0.00") and money_out_total == Decimal("0.00")
