@@ -9,13 +9,13 @@
   - In `pyproject.toml`, add a `[tool.coverage.run]` section with `omit = ["*/cli.py"]` to exclude the CLI module from the coverage floor (the `--cov-omit` flag does not exist in `pytest-cov`; omission is configured here)
   - _Requirements: R10.1, R13.1, R13.2, R13.3, R13.4_
 
-- [ ] 2. Implement `schema.py` — budget shape definition
+- [x] 2. Implement `schema.py` — budget shape definition
 - [x] 2.1 Define `Category` and `Section` enums
   - Write the `Category(enum.Enum)` with all 22 leaf category members matching the exact display names from the CSV schema
   - Write the `Section(enum.Enum)` with all 6 section members
   - _Requirements: R7.3, R10.1, R10.3_
 
-- [ ] 2.2 Define `SchemaRow` dataclass and `SCHEMA_ORDER` constant
+- [x] 2.2 Define `SchemaRow` dataclass and `SCHEMA_ORDER` constant
   - Write the `SchemaRow(frozen=True)` dataclass with `kind: Literal["section_header", "line_item", "subtotal", "grand_total"]`, `section: Section | None`, `category: Category | None`, `label: str`, and `group: Literal["income", "expenditure"] | None` fields. The `group` field is populated on `section_header`, `subtotal`, and `grand_total` rows; it tells the writer which subtotals to sum for each grand total. Inflow sections (Regular Inflows, Irregular Inflows, Asset Liquidation) carry `group="income"`; outflow sections (Regular Outflows, Irregular Outflows, Assets) carry `group="expenditure"`. The `Total Income` grand total has `group="income"`; `Total Expenditure` has `group="expenditure"`. Line items leave `group=None` (their group is derivable from their section).
   - Write the `SCHEMA_ORDER: list[SchemaRow]` constant encoding all 34 rows (section headers, 22 line items, 6 subtotals, 2 grand totals) in the exact fixed output order from R7.3
   - Implement `category_display_name(category: Category) -> str` and `section_for_category(category: Category) -> Section` helpers
