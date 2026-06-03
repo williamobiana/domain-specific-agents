@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from lloyds_expense.parser import Transaction  # type: ignore[import-not-found]
-    from lloyds_expense.reconciler import ReconciliationReport  # type: ignore[import-not-found]
+    from lloyds_expense.parser import Transaction
+    from lloyds_expense.reconciler import ReconciliationReport
 
 
 class StatementToCsvError(Exception):

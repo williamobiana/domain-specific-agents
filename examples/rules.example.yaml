@@ -1,0 +1,20 @@
+rules:
+  - match: OMASIRICHI OKWU BO
+    type: FPO
+    direction: out
+    category: Food Supplies
+
+  - match: NATIONAL SERV M/W
+    type: BGC
+    direction: in
+    category: Salary
+
+  - match: HLAM REGULAR SAVIN
+    type: DD
+    direction: out
+    category: Active Savings
+
+  - match: Trading 212
+    type: DEB
+    direction: out
+    category: Stocks & Shares ISA
