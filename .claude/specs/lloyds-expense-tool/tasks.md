@@ -22,7 +22,7 @@
   - Write `test_schema.py` asserting enum completeness (22 categories, 6 sections), `SCHEMA_ORDER` length (34 rows), that every `Category` member appears exactly once as a line item, and that the `group` field is correctly assigned on every section header, subtotal, and grand-total row
   - _Requirements: R7.3, R7.5, R7.6, R10.3_
 
-- [ ] 3. Implement `errors.py` — typed exception hierarchy
+- [x] 3. Implement `errors.py` — typed exception hierarchy
   - Write `StatementToCsvError(Exception)` base class
   - Write `ParseError` with attributes `message: str` and `page: int | None`
   - Write `RulesConfigError` with attributes `message: str`, `line_number: int | None`, and `violations: list[str]`
