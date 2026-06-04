@@ -20,12 +20,6 @@ Requires Python 3.11+. Install with [uv](https://github.com/astral-sh/uv):
 uv sync
 ```
 
-Or with pip:
-
-```sh
-pip install -e .
-```
-
 ## Usage
 
 ```sh
