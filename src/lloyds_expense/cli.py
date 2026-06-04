@@ -4,8 +4,6 @@ This is the only module in the package that:
 - accesses sys.argv (via typer)
 - writes to stdout/stderr directly
 - calls sys.exit (via typer.Exit)
-
-All rich output goes to stderr; stdout remains clean.
 """
 
 from __future__ import annotations
@@ -24,11 +22,10 @@ from lloyds_expense.reconciler import reconcile
 from lloyds_expense.rules import load_rules
 from lloyds_expense.writer import write_csv
 
-# Rich console that always writes to stderr, keeping stdout clean.
-_console = Console(stderr=True)
+_console = Console()
 
-# The default rules file location (R3.2, R9.2).
-_DEFAULT_RULES_PATH = Path.home() / ".config" / "lloyds-expense" / "rules.yaml"
+# The default rules file location.
+_DEFAULT_RULES_PATH = Path.cwd() / "rules" / "rules.yaml"
 
 # Typer application object — imported by __main__.py and referenced in pyproject.toml.
 app = typer.Typer(
