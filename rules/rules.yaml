@@ -63,3 +63,8 @@ rules:
     type: FPO
     direction: out
     category: Charity / Donations
+
+  - match: ABDULAKEEM SOLIHU
+    type: FPO
+    direction: out
+    category: Charity / Donations
