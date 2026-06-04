@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lloyds-expense"
+version = "0.1.0"
+description = "Transform a Lloyds Bank Classic statement PDF into a categorised monthly cash-flow CSV"
+requires-python = ">=3.11"
+dependencies = [
+    "pdfplumber>=0.11",
+    "PyYAML>=6.0",
+    "typer>=0.12",
+    "rich>=13.0",
+]
+
+[project.scripts]
+lloyds-expense = "lloyds_expense.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "mypy>=1.10",
+    "ruff>=0.4",
+    "types-PyYAML>=6.0",
+    "reportlab>=4.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lloyds_expense"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+preview = true
+select = ["E", "F", "I", "N", "UP", "RUF", "E225"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+strict = true
+python_version = "3.11"
+
+[tool.pytest.ini_options]
+addopts = "--cov=lloyds_expense --cov-fail-under=90"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["lloyds_expense"]
+omit = ["*/cli.py"]
+
+[tool.coverage.report]
+show_missing = true
