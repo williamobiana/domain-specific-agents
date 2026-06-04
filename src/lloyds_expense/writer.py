@@ -82,6 +82,10 @@ def write_csv(result: ClassificationResult, statement: Statement, out: Path) -> 
     # writing grand_total rows.
     subtotals_by_group: dict[str, list[Decimal]] = defaultdict(list)
 
+    # Grand totals keyed by group, populated when grand_total rows are written,
+    # used to compute the final balance row.
+    grand_totals: dict[str, Decimal] = {}
+
     with open(out, "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL, lineterminator="\n")
 
@@ -120,3 +124,11 @@ def write_csv(result: ClassificationResult, statement: Statement, out: Path) -> 
                     Decimal("0.00"),
                 )
                 writer.writerow([row.label, str(grand_value.quantize(Decimal("0.01")))])
+                if row.group is not None:
+                    grand_totals[row.group] = grand_value
+
+            elif row.kind == "balance":
+                balance = grand_totals.get("income", Decimal("0.00")) - grand_totals.get(
+                    "expenditure", Decimal("0.00")
+                )
+                writer.writerow([row.label, str(balance.quantize(Decimal("0.01")))])

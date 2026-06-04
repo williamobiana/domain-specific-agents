@@ -58,7 +58,7 @@ class Section(enum.Enum):
 class SchemaRow:
     """One row in the fixed CSV output schema."""
 
-    kind: Literal["section_header", "line_item", "subtotal", "grand_total"]
+    kind: Literal["section_header", "line_item", "subtotal", "grand_total", "balance"]
     section: Section | None
     category: Category | None
     label: str
@@ -237,5 +237,12 @@ SCHEMA_ORDER: list[SchemaRow] = [
         category=None,
         label="Total Expenditure",
         group="expenditure",
+    ),
+    SchemaRow(
+        kind="balance",
+        section=None,
+        category=None,
+        label="Balance",
+        group=None,
     ),
 ]
