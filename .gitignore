@@ -34,3 +34,5 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+Statement_*.csv

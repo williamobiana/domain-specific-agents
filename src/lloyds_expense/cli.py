@@ -50,7 +50,7 @@ def main(
     ] = None,
     out: Annotated[
         Path | None,
-        typer.Option("--out", help="Output CSV path (required)"),
+        typer.Option("--out", help="Output CSV path (default: <pdf-stem>.csv in current directory)"),
     ] = None,
     report_unmatched: Annotated[
         Path | None,
@@ -64,16 +64,15 @@ def main(
       1 — one or more unmatched transactions; no CSV written.
       2 — reconciliation mismatch; no CSV written.
       3 — PDF parse failure.
-      4 — bad input (missing file, bad rules, missing --out).
+      4 — bad input (missing file, bad rules).
     """
     # ------------------------------------------------------------------
     # Input validation (exit code 4 for all failures here)
     # ------------------------------------------------------------------
 
-    # R9.3 / task 9.1: --out must be supplied.
+    # Default output path: <pdf-stem>.csv in the current working directory.
     if out is None:
-        _console.print("[red]Error:[/red] --out is required. Please supply an output CSV path.")
-        raise typer.Exit(code=4)
+        out = Path.cwd() / (statement_pdf.stem + ".csv")
 
     # R1.2 / task 9.1: statement_pdf must exist and be readable.
     if not statement_pdf.exists():
