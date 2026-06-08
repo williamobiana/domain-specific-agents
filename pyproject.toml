@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "lloyds-expense"
+name = "bank-expense"
 version = "0.1.0"
-description = "Transform a Lloyds Bank Classic statement PDF into a categorised monthly cash-flow CSV"
+description = "Transform a Bank Classic statement PDF into a categorised monthly cash-flow CSV"
 requires-python = ">=3.11"
 dependencies = [
     "pdfplumber>=0.11",
