@@ -2,9 +2,9 @@
 
 ## Introduction
 
-The Monzo Expense Tool is a command-line application that transforms a Monzo personal-account statement PDF into one categorised monthly cash-flow CSV per calendar month covered by the statement. The tool parses raw transaction data, classifies each transaction against a user-maintained YAML rules file, groups transactions by calendar month, reconciles against the statement's reported totals, and emits CSVs that conform to a fixed personal-finance schema — complete with named sections, line-item subtotals, and grand totals. The tool targets a single end user running it locally against their own statements, removing the need for manual transaction classification.
+The Monzo Expense Tool is a command-line application that transforms a Monzo account statement PDF into one categorised monthly cash-flow CSV per calendar month covered by the statement. The tool parses raw transaction data, classifies each transaction against a user-maintained YAML rules file, groups transactions by calendar month, reconciles against the statement's reported totals, and emits CSVs that conform to a fixed schema — complete with named sections, line-item subtotals, and grand totals. The tool targets a single end user running it locally against their own statements, removing the need for manual transaction classification.
 
-This tool is a sibling of `lloyds-expense`. The two share intent and output schema shape but are deliberately separate codebases. Monzo statements have a fundamentally different format: direction is encoded in the sign of a single amount column (no separate money-in / money-out columns), there are no transaction-type codes, a single PDF may span multiple calendar months, descriptions frequently wrap across PDF rows, and Pot statement pages trail the personal-account section and must be ignored. These incompatibilities make a shared parser non-viable. Schema and writer logic are duplicated by design.
+This tool is a sibling of `lloyds-expense`. The two share intent and output schema shape but are deliberately separate codebases. Monzo statements have a fundamentally different format: direction is encoded in the sign of a single amount column (no separate money-in / money-out columns), there are no transaction-type codes, a single PDF may span multiple calendar months, descriptions frequently wrap across PDF rows, and Pot statement pages trail the account section and must be ignored. These incompatibilities make a shared parser non-viable. Schema and writer logic are duplicated by design.
 
 ---
 
@@ -12,39 +12,38 @@ This tool is a sibling of `lloyds-expense`. The two share intent and output sche
 
 ### Requirement 1: PDF Input Acceptance
 
-**User Story:** As an account holder, I want to provide a single Monzo personal-account statement PDF to the tool so that it can process my transactions without requiring any format conversion on my part.
+**User Story:** As an account holder, I want to provide a single Monzo account statement PDF to the tool so that it can process my transactions without requiring any format conversion on my part.
 
 #### Acceptance Criteria
 
 1. WHEN the user supplies a PDF file path as a positional argument THEN the system SHALL accept exactly one PDF file per invocation.
 2. WHEN the supplied file does not exist or is not readable THEN the system SHALL exit with code 4 and display a descriptive error message via `rich`.
-3. WHEN the supplied file is not a valid Monzo personal-account PDF THEN the system SHALL exit with code 3 and report a parse error.
+3. WHEN the supplied file is not a valid Monzo account PDF THEN the system SHALL exit with code 3 and report a parse error.
 4. WHEN more than one positional PDF argument is provided THEN the system SHALL exit with code 4 and inform the user that only one statement is accepted per run.
 5. IF the PDF is password-protected or corrupt THEN the system SHALL exit with code 3 and display the underlying parse failure reason.
-6. WHEN the supplied PDF is a Monzo Flex, joint-account, or business-account statement THEN the system SHALL exit with code 3; only Monzo personal-account statements are in scope.
 
 ---
 
 ### Requirement 2: Transaction Parsing
 
-**User Story:** As an account holder, I want every transaction in my Monzo statement to be extracted with full fidelity, so that no data is lost or silently misread before classification.
+**User Story:** As an account holder, I want every transaction in the statement to be extracted with full fidelity, so that no data is lost or silently misread before classification.
 
 #### Acceptance Criteria
 
-1. WHEN a valid Monzo personal-account PDF is processed THEN the system SHALL extract each transaction's date, description, amount, direction, and running balance, returning them as a tuple of frozen `Transaction` dataclasses on a `Statement` object. `Transaction` SHALL NOT carry a `type_code` field — Monzo statements do not include transaction-type codes.
+1. WHEN a valid Monzo account PDF is processed THEN the system SHALL extract each transaction's date, description, amount, direction, and running balance, returning them as a tuple of frozen `Transaction` dataclasses on a `Statement` object. `Transaction` SHALL NOT carry a `type_code` field — Monzo statements do not include transaction-type codes.
 2. WHEN a transaction row carries a positive amount THEN the system SHALL record `direction` as `"in"` and `amount` as a positive `Decimal`.
 3. WHEN a transaction row carries a negative amount THEN the system SHALL record `direction` as `"out"` and `amount` as a positive `Decimal`. Outflows SHALL NOT be stored as negative numbers; `direction` is the single source of truth for inflow versus outflow.
 4. WHEN monetary values are parsed THEN the system SHALL use `decimal.Decimal` for all amounts, constructed from the cleaned string form. Floats SHALL NOT appear anywhere in the parsing pipeline.
 5. WHEN amounts in the PDF contain thousand-separator commas THEN the system SHALL strip them before constructing the `Decimal`.
 6. WHEN a transaction description wraps across multiple PDF rows — common for Faster Payments entries with `Reference: …` lines and for currency-conversion annotations — THEN the system SHALL re-join those continuation lines into a single `description` string, separated by a single space. The joining logic SHALL be contained entirely within `parser.py`.
-7. WHEN the PDF contains Pot statement pages (pages describing Pot accounts rather than the main personal account) THEN the system SHALL detect and skip them entirely. No `Transaction` records SHALL be emitted from Pot pages. The personal-account section always precedes Pot pages.
+7. WHEN the PDF contains Pot statement pages (pages describing Pot accounts rather than the main account) THEN the system SHALL detect and skip them entirely. No `Transaction` records SHALL be emitted from Pot pages. The account section always precedes Pot pages.
 8. WHEN transaction dates appear in the PDF THEN the system SHALL parse them using the four-digit year visible in the PDF; the parser SHALL NOT rely on the current system date to expand years.
-9. WHEN the transaction table spans multiple pages of the personal-account section THEN the system SHALL concatenate rows into a single list preserving document order (top-to-bottom within a page, then page-by-page).
+9. WHEN the transaction table spans multiple pages THEN the system SHALL concatenate rows into a single list preserving document order (top-to-bottom within a page, then page-by-page).
 10. WHEN non-transaction content appears (e.g. column legends, summary rows, Pot page content) THEN the system SHALL ignore it and not emit `Transaction` records from it.
 11. WHEN transactions are returned THEN the system SHALL preserve their document order. The parser SHALL NOT reorder by date, amount, or any other field.
 12. WHEN the first page of the PDF contains period-level summary totals (`Total deposits`, `Total outgoings`) THEN the system SHALL extract them as `Decimal` values and store them on the `Statement` object.
 13. WHEN the first page of the PDF contains opening and closing balance figures THEN the system SHALL extract them as `Decimal` values and store them on the `Statement` object.
-14. IF the transaction table cannot be located in the personal-account section of the PDF THEN the system SHALL exit with code 3 and report the specific parse failure, including the page number where parsing failed if determinable.
+14. IF the transaction table cannot be located in the PDF THEN the system SHALL exit with code 3 and report the specific parse failure, including the page number where parsing failed if determinable.
 15. IF the PDF parses but produces zero `Transaction` records THEN the parser SHALL still return a valid `Statement` object with an empty transactions list; zero-transaction handling defined in R9 then applies.
 
 ---
