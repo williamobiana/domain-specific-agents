@@ -17,33 +17,44 @@ from monzo_expense.errors import ParseError
 # Regex constants
 # ---------------------------------------------------------------------------
 
-_MONTH_PAT = (
-    r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?"
-    r"|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
-)
-
-# Monzo PDFs always use four-digit years: "01 Apr 2026 to 30 Apr 2026"
+# Real Monzo PDFs use DD/MM/YYYY format: "01/02/2026 - 30/04/2026"
 _PERIOD_RE = re.compile(
-    r"(\d{1,2})\s+(" + _MONTH_PAT + r")\s+(\d{4})\s+to\s+"
-    r"(\d{1,2})\s+(" + _MONTH_PAT + r")\s+(\d{4})",
+    r"(\d{1,2})/(\d{1,2})/(\d{4})\s*[-–]\s*(\d{1,2})/(\d{1,2})/(\d{4})",
+)
+
+# Total outgoings appears as "-£8,082.75\nTotal outgoings" (amount before label)
+_TOTAL_OUTGOINGS_RE = re.compile(
+    r"-£([\d,]+\.\d{2})\s+Total\s+outgoings",
     re.IGNORECASE,
 )
 
-_SORT_CODE_RE = re.compile(r"\b(\d{2}-\d{2}-\d{2})\b")
-_ACCOUNT_NUM_RE = re.compile(r"\b(\d{8})\b")
-
-# Transaction date in table rows: "01 Apr 2026" (four-digit year)
-_TX_DATE_RE = re.compile(
-    r"^\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}$",
+# Total deposits appears as "+£8,057.90\n...\nTotal deposits" (amount before label,
+# with "Account number: XXXXXXXX" potentially interleaved in pdfplumber's output)
+_TOTAL_DEPOSITS_RE = re.compile(
+    r"\+£([\d,]+\.\d{2})[\s\S]{0,120}?Total\s+deposits",
     re.IGNORECASE,
 )
 
-# Expected Monzo transaction table headers
-_EXPECTED_HEADERS: frozenset[str] = frozenset({"date", "description", "amount", "balance"})
+# Transaction date word: DD/MM/YYYY
+_TX_DATE_WORD_RE = re.compile(r"^\d{1,2}/\d{2}/\d{4}$")
 
-# Pot page markers
-_POT_HEADING_RE = re.compile(r"^[A-Z][A-Za-z\s]+ Pot\b", re.MULTILINE)
-_POTS_RE = re.compile(r"^Pots$", re.MULTILINE)
+# ---------------------------------------------------------------------------
+# Column x-coordinate boundaries
+# Derived from real PDF word position analysis (pdfplumber extract_words):
+#   Date column:        x0 ≈  70.5  → boundary < 135
+#   Description column: x0 ≈ 152.9  → boundary 135–395
+#   Amount column:      x0 ≈ 397–420 → boundary 395–460
+#   Balance column:     x0 ≈ 486–505 → boundary ≥ 460
+#
+# NOTE: large balance values (e.g. £1,010.97) are right-aligned and start at
+# x ≈ 485–486, which is closer to the amount column than small balances
+# (x ≈ 499–505). A boundary of 460 cleanly separates all observed amounts
+# (≤ 420) from all observed balances (≥ 486).
+# ---------------------------------------------------------------------------
+
+_DATE_COL_X_MAX: float = 135.0
+_DESC_COL_X_MAX: float = 395.0
+_AMT_COL_X_MAX: float = 460.0
 
 
 # ---------------------------------------------------------------------------
@@ -82,66 +93,137 @@ class Statement:
 # ---------------------------------------------------------------------------
 
 
-def _month_to_int(month_str: str) -> int:
-    abbrs = {
-        "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
-        "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
-    }
-    return abbrs[month_str[:3].lower()]
+def _is_pot_page(page_text: str) -> bool:
+    """Return True when the first non-empty line of the page starts with 'Pot statement'.
+
+    Real Monzo PDFs append one or more Pot statement pages after the personal-account
+    section. These always begin with 'Pot statement' as the first meaningful line.
+    """
+    for line in page_text.splitlines():
+        stripped = line.strip()
+        if stripped:
+            return stripped.lower().startswith("pot statement")
+    return False
 
 
-def _parse_labeled_amount(page_text: str, label: str) -> Decimal | None:
-    pattern = re.compile(
-        re.escape(label) + r"\s*[:\s]\s*£?([\d,]+\.\d{2})",
-        re.IGNORECASE,
+def _group_words_by_y(
+    words: list[dict[str, Any]], y_tolerance: float = 3.0
+) -> dict[float, list[dict[str, Any]]]:
+    """Group pdfplumber word dicts by their top (y) coordinate.
+
+    Words within y_tolerance of an existing bucket's key are merged into that
+    bucket. Returns an ordered dict sorted ascending by y (top-to-bottom).
+    """
+    buckets: dict[float, list[dict[str, Any]]] = {}
+    for w in words:
+        y = w["top"]
+        match_y = next((k for k in buckets if abs(k - y) <= y_tolerance), None)
+        key = match_y if match_y is not None else y
+        buckets.setdefault(key, []).append(w)
+    for key in buckets:
+        buckets[key].sort(key=lambda w: w["x0"])
+    return dict(sorted(buckets.items()))
+
+
+def _split_row(
+    words_in_row: list[dict[str, Any]],
+) -> tuple[str, str, str, str]:
+    """Split a row's words into (date_text, desc_text, amount_text, balance_text)."""
+    date_parts = [w["text"] for w in words_in_row if w["x0"] < _DATE_COL_X_MAX]
+    desc_parts = [
+        w["text"]
+        for w in words_in_row
+        if _DATE_COL_X_MAX <= w["x0"] < _DESC_COL_X_MAX
+    ]
+    amt_parts = [
+        w["text"]
+        for w in words_in_row
+        if _DESC_COL_X_MAX <= w["x0"] < _AMT_COL_X_MAX
+    ]
+    bal_parts = [w["text"] for w in words_in_row if w["x0"] >= _AMT_COL_X_MAX]
+    return (
+        " ".join(date_parts).strip(),
+        " ".join(desc_parts).strip(),
+        " ".join(amt_parts).strip(),
+        " ".join(bal_parts).strip(),
     )
-    match = pattern.search(page_text)
-    if match is None:
-        return None
-    return Decimal(match.group(1).replace(",", ""))
+
+
+def _find_table_start_y(
+    words: list[dict[str, Any]],
+) -> float | None:
+    """Return the y-coordinate of the transaction table header row, or None.
+
+    Detects the row containing 'Date' in the date column and 'Description'
+    in the description column. Used to skip metadata content on page 1.
+    """
+    rows = _group_words_by_y(words)
+    for y, row_words in rows.items():
+        date_text, desc_text, _, _ = _split_row(row_words)
+        if date_text.lower() == "date" and "description" in desc_text.lower():
+            return y
+    return None
 
 
 def _extract_metadata(page_text: str) -> dict[str, Any]:
     """Parse Monzo first-page text and return statement metadata.
 
+    Real Monzo PDFs present amounts BEFORE their labels (due to multi-column
+    layout merging in pdfplumber). For example: '-£8,082.75\\nTotal outgoings'.
+    Opening balance is derived from the balance equation rather than extracted
+    directly, since Monzo does not label it explicitly.
+
     Raises:
         ParseError: when any required field cannot be located.
     """
+    # --- Statement period (DD/MM/YYYY - DD/MM/YYYY) ---
     period_match = _PERIOD_RE.search(page_text)
     if period_match is None:
         raise ParseError("Cannot locate statement period on first page")
 
-    start_day = int(period_match.group(1))
-    start_mon = period_match.group(2)
-    start_year = int(period_match.group(3))
-    end_day = int(period_match.group(4))
-    end_mon = period_match.group(5)
-    end_year = int(period_match.group(6))
+    period_start = date(
+        int(period_match.group(3)),
+        int(period_match.group(2)),
+        int(period_match.group(1)),
+    )
+    period_end = date(
+        int(period_match.group(6)),
+        int(period_match.group(5)),
+        int(period_match.group(4)),
+    )
 
-    period_start = date(start_year, _month_to_int(start_mon), start_day)
-    period_end = date(end_year, _month_to_int(end_mon), end_day)
+    # --- Sort code and account number ---
+    sc_match = re.search(r"\b(\d{2}-\d{2}-\d{2})\b", page_text)
+    sort_code = sc_match.group(1) if sc_match else ""
 
-    sort_code_match = _SORT_CODE_RE.search(page_text)
-    sort_code = sort_code_match.group(1) if sort_code_match else ""
+    an_match = re.search(r"Account\s+number:\s+(\d+)", page_text, re.IGNORECASE)
+    account_number = an_match.group(1) if an_match else ""
 
-    account_num_match = _ACCOUNT_NUM_RE.search(page_text)
-    account_number = account_num_match.group(1) if account_num_match else ""
-
-    opening_balance = _parse_labeled_amount(page_text, "opening balance")
-    if opening_balance is None:
-        raise ParseError("Cannot locate opening balance on first page")
-
-    closing_balance = _parse_labeled_amount(page_text, "closing balance")
-    if closing_balance is None:
-        raise ParseError("Cannot locate closing balance on first page")
-
-    total_deposits = _parse_labeled_amount(page_text, "total deposits")
-    if total_deposits is None:
-        raise ParseError("Cannot locate Total deposits on first page")
-
-    total_outgoings = _parse_labeled_amount(page_text, "total outgoings")
-    if total_outgoings is None:
+    # --- Total outgoings: -£X.XX before the label ---
+    out_match = _TOTAL_OUTGOINGS_RE.search(page_text)
+    if out_match is None:
         raise ParseError("Cannot locate Total outgoings on first page")
+    total_outgoings = Decimal(out_match.group(1).replace(",", ""))
+
+    # --- Total deposits: +£X.XX before the label ---
+    dep_match = _TOTAL_DEPOSITS_RE.search(page_text)
+    if dep_match is None:
+        raise ParseError("Cannot locate Total deposits on first page")
+    total_deposits = Decimal(dep_match.group(1).replace(",", ""))
+
+    # --- Closing balance: last £X.XX before "Personal Account balance" ---
+    pab_match = re.search(r"Personal\s+Account\s+balance", page_text, re.IGNORECASE)
+    if pab_match is None:
+        raise ParseError("Cannot locate Personal Account balance on first page")
+    text_before_pab = page_text[: pab_match.start()]
+    balance_amounts = re.findall(r"£([\d,]+\.\d{2})", text_before_pab)
+    if not balance_amounts:
+        raise ParseError("Cannot extract closing balance from first page")
+    closing_balance = Decimal(balance_amounts[-1].replace(",", ""))
+
+    # --- Opening balance: derived from balance equation ---
+    # Monzo does not label the opening balance explicitly; derive it.
+    opening_balance = closing_balance - total_deposits + total_outgoings
 
     return {
         "sort_code": sort_code,
@@ -153,36 +235,6 @@ def _extract_metadata(page_text: str) -> dict[str, Any]:
         "total_deposits": total_deposits,
         "total_outgoings": total_outgoings,
     }
-
-
-def _is_pot_page(page_text: str) -> bool:
-    """Return True when the page text contains a Pot-section marker."""
-    lines = page_text.splitlines()
-    threshold = max(1, len(lines) // 5)
-    first_lines = "\n".join(lines[:threshold])
-    return bool(_POT_HEADING_RE.search(first_lines) or _POTS_RE.search(first_lines))
-
-
-def _is_transaction_table(table: list[list[str | None]]) -> bool:
-    """Return True when the table's first row matches Monzo transaction column headers."""
-    if not table:
-        return False
-    header_row = table[0]
-    normalised = {(cell or "").strip().lower() for cell in header_row}
-    return _EXPECTED_HEADERS.issubset(normalised) and len(normalised) == len(_EXPECTED_HEADERS)
-
-
-def _is_continuation_row(row: list[str | None]) -> bool:
-    """Return True for description-continuation rows.
-
-    A continuation row has an empty date cell, non-empty description cell,
-    and empty amount and balance cells.
-    """
-    date_cell = (row[0] or "").strip()
-    desc_cell = (row[1] or "").strip() if len(row) > 1 else ""
-    amount_cell = (row[2] or "").strip() if len(row) > 2 else ""
-    balance_cell = (row[3] or "").strip() if len(row) > 3 else ""
-    return not date_cell and bool(desc_cell) and not amount_cell and not balance_cell
 
 
 def _parse_amount_and_direction(raw: str) -> tuple[Decimal, Literal["in", "out"]]:
@@ -197,6 +249,90 @@ def _parse_amount_and_direction(raw: str) -> tuple[Decimal, Literal["in", "out"]
     return -value, "out"
 
 
+def _extract_transactions_from_words(
+    words: list[dict[str, Any]],
+    page_num: int | None = None,
+) -> list[Transaction]:
+    """Build Transaction objects from a filtered list of pdfplumber word dicts.
+
+    Uses word x-coordinates to classify each word into one of four columns
+    (date, description, amount, balance), then groups rows by y-coordinate
+    and assigns description-only continuation rows to their nearest transaction
+    row using the midpoint rule.
+    """
+    rows = _group_words_by_y(words)
+
+    # Classify each row
+    tx_rows: dict[float, tuple[str, str, str, str]] = {}  # y → (date, desc, amt, bal)
+    desc_rows: list[tuple[float, str]] = []  # (y, text) for desc-only continuation rows
+
+    for y, row_words in rows.items():
+        date_text, desc_text, amount_text, balance_text = _split_row(row_words)
+        if _TX_DATE_WORD_RE.match(date_text) and amount_text and balance_text:
+            tx_rows[y] = (date_text, desc_text, amount_text, balance_text)
+        elif desc_text and not date_text and not amount_text and not balance_text:
+            desc_rows.append((y, desc_text))
+
+    if not tx_rows:
+        return []
+
+    tx_ys = sorted(tx_rows)
+
+    # Assign each desc-only row to the nearest transaction row (midpoint rule).
+    # For rows before the first transaction or after the last, assign to the
+    # nearest endpoint.
+    assignments: dict[float, list[tuple[float, str]]] = {y: [] for y in tx_ys}
+
+    for desc_y, desc_text in desc_rows:
+        before = [y for y in tx_ys if y <= desc_y]
+        after = [y for y in tx_ys if y > desc_y]
+
+        if not before:
+            nearest = after[0]
+        elif not after:
+            nearest = before[-1]
+        else:
+            prev_y, next_y = before[-1], after[0]
+            nearest = prev_y if desc_y <= (prev_y + next_y) / 2.0 else next_y
+
+        assignments[nearest].append((desc_y, desc_text))
+
+    # Build Transaction objects in top-to-bottom (document) order
+    transactions: list[Transaction] = []
+    for tx_y in tx_ys:
+        date_text, inline_desc, amount_text, balance_text = tx_rows[tx_y]
+        assigned = sorted(assignments[tx_y])  # ascending y within this tx's group
+
+        pre_parts = [text for y, text in assigned if y < tx_y]
+        post_parts = [text for y, text in assigned if y > tx_y]
+
+        desc_parts = pre_parts + ([inline_desc] if inline_desc else []) + post_parts
+        full_desc = " ".join(desc_parts).strip()
+
+        try:
+            tx_date = datetime.strptime(date_text, "%d/%m/%Y").date()
+            amount, direction = _parse_amount_and_direction(amount_text)
+            running_balance = Decimal(balance_text.replace(",", ""))
+        except Exception as exc:
+            raise ParseError(
+                f"Cannot parse transaction row: date={date_text!r} "
+                f"amount={amount_text!r} balance={balance_text!r}",
+                page=page_num,
+            ) from exc
+
+        transactions.append(
+            Transaction(
+                date=tx_date,
+                description=full_desc,
+                amount=amount,
+                direction=direction,
+                running_balance=running_balance,
+            )
+        )
+
+    return transactions
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -204,6 +340,10 @@ def _parse_amount_and_direction(raw: str) -> tuple[Decimal, Literal["in", "out"]
 
 def parse_statement(path: Path) -> Statement:
     """Open a Monzo personal-account PDF and return a fully-parsed Statement.
+
+    Uses word-position extraction (pdfplumber extract_words) rather than
+    extract_tables, because real Monzo PDFs use a visual layout with no
+    structural table borders that pdfplumber can detect.
 
     Raises:
         ParseError: on any parse failure including unreadable files, missing
@@ -229,77 +369,27 @@ def parse_statement(path: Path) -> Statement:
 
         transactions: list[Transaction] = []
 
-        # Pending-row accumulator for description-joining
-        pending_date: date | None = None
-        pending_desc_parts: list[str] = []
-        pending_amount: Decimal = Decimal("0")
-        pending_direction: Literal["in", "out"] = "in"
-        pending_balance: Decimal = Decimal("0")
-
-        def _emit_pending() -> None:
-            if pending_date is not None:
-                transactions.append(
-                    Transaction(
-                        date=pending_date,
-                        description=" ".join(pending_desc_parts),
-                        amount=pending_amount,
-                        direction=pending_direction,
-                        running_balance=pending_balance,
-                    )
-                )
-
-        in_pot_section = False
-
         for page_index, page in enumerate(pdf.pages):
-            if in_pot_section:
-                break
-
             page_num = page_index + 1
             page_text = page.extract_text() or ""
 
             if _is_pot_page(page_text):
-                in_pot_section = True
-                _emit_pending()
-                pending_date = None
+                # Pot pages always trail the personal-account section; stop here.
                 break
 
-            tables = page.extract_tables()
-            for table in tables:
-                if not _is_transaction_table(table):
-                    continue
+            words = page.extract_words()
 
-                for row in table[1:]:
-                    date_cell = (row[0] or "").strip()
+            # On page 1 the metadata header occupies most of the page.
+            # Find the transaction table header row and skip everything above it.
+            skip_above_y: float | None = None
+            if page_index == 0:
+                skip_above_y = _find_table_start_y(words)
 
-                    if _TX_DATE_RE.match(date_cell):
-                        # New transaction row — emit any pending first
-                        _emit_pending()
-                        pending_date = None
+            if skip_above_y is not None:
+                words = [w for w in words if w["top"] > skip_above_y]
 
-                        try:
-                            tx_date = datetime.strptime(date_cell, "%d %b %Y").date()
-                            amount_str = (row[2] or "").strip()
-                            balance_str = (row[3] or "").strip()
-                            parsed_amount, direction = _parse_amount_and_direction(amount_str)
-                            run_bal = Decimal(balance_str.replace(",", ""))
-                        except Exception as exc:
-                            raise ParseError(
-                                f"Cannot parse transaction row: {row}", page=page_num
-                            ) from exc
-
-                        pending_date = tx_date
-                        pending_desc_parts = [(row[1] or "").strip()]
-                        pending_amount = parsed_amount
-                        pending_direction = direction
-                        pending_balance = run_bal
-
-                    elif _is_continuation_row(row):
-                        desc_text = (row[1] or "").strip()
-                        if desc_text:
-                            pending_desc_parts.append(desc_text)
-
-        # Emit the last pending transaction
-        _emit_pending()
+            page_txs = _extract_transactions_from_words(words, page_num=page_num)
+            transactions.extend(page_txs)
 
     # Zero-transaction edge cases
     zero_totals = (
@@ -321,8 +411,8 @@ def parse_statement(path: Path) -> Statement:
 
     if len(transactions) == 0 and not zero_totals:
         raise ParseError(
-            f"PDF produced zero transaction rows but statement totals are non-zero"
-            f" (total_deposits={total_deposits}, total_outgoings={total_outgoings})"
+            f"PDF produced zero transaction rows but statement totals are non-zero "
+            f"(total_deposits={total_deposits}, total_outgoings={total_outgoings})"
         )
 
     # Verify balance equation

@@ -26,7 +26,10 @@ from monzo_expense.writer import write_csvs
 _stderr = Console(stderr=True)
 _stdout = Console()
 
-_DEFAULT_RULES_PATH = Path.home() / ".config" / "monzo-expense" / "rules.yaml"
+# Project-local default (mirrors how lloyds-expense resolves rules).
+_DEFAULT_RULES_PATH_LOCAL = Path.cwd() / "rules" / "monzo_rules.yaml"
+# XDG-style fallback for when the tool is installed outside the project tree.
+_DEFAULT_RULES_PATH_USER = Path.home() / ".config" / "monzo-expense" / "rules.yaml"
 
 app = typer.Typer(
     name="monzo-expense",
@@ -47,7 +50,10 @@ def main(
     ] = None,
     out_dir: Annotated[
         Path | None,
-        typer.Option("--out-dir", help="Directory to write output CSVs into (required)"),
+        typer.Option(
+            "--out-dir",
+            help="Directory to write output CSVs into (default: ./output)",
+        ),
     ] = None,
     report_unmatched: Annotated[
         Path | None,
@@ -61,15 +67,14 @@ def main(
       1 — one or more unmatched transactions; no CSVs written.
       2 — reconciliation mismatch; no CSVs written.
       3 — PDF parse failure.
-      4 — bad input (missing file, bad rules, missing --out-dir).
+      4 — bad input (missing file, bad rules).
     """
     # ------------------------------------------------------------------
     # Input validation
     # ------------------------------------------------------------------
 
     if out_dir is None:
-        _stderr.print("[red]Error:[/red] --out-dir is required")
-        raise typer.Exit(code=4)
+        out_dir = Path.cwd() / "output"
 
     if not statement_pdf.exists():
         _stderr.print(f"[red]Error:[/red] PDF file not found: {statement_pdf}")
@@ -78,12 +83,16 @@ def main(
         _stderr.print(f"[red]Error:[/red] Not a file: {statement_pdf}")
         raise typer.Exit(code=4)
 
-    effective_rules: Path = rules if rules is not None else _DEFAULT_RULES_PATH
-    if not effective_rules.exists():
+    if rules is not None:
+        effective_rules: Path = rules
+    elif _DEFAULT_RULES_PATH_LOCAL.exists():
+        effective_rules = _DEFAULT_RULES_PATH_LOCAL
+    elif _DEFAULT_RULES_PATH_USER.exists():
+        effective_rules = _DEFAULT_RULES_PATH_USER
+    else:
         _stderr.print(
-            f"[red]Error:[/red] Rules file not found: {effective_rules}. "
-            "Supply --rules or place a rules file at "
-            f"{_DEFAULT_RULES_PATH}"
+            f"[red]Error:[/red] No rules file found. Supply --rules or place a rules file at "
+            f"{_DEFAULT_RULES_PATH_LOCAL} or {_DEFAULT_RULES_PATH_USER}"
         )
         raise typer.Exit(code=4)
 
