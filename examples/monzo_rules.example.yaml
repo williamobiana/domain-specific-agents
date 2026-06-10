@@ -1,0 +1,131 @@
+rules:
+  # ── Inflows ────────────────────────────────────────────────────────────────
+
+  # Main Account Inflow: regular transfers into this account from another account
+  - match: "O Okwu-Boms (Faster Payments)"
+    direction: in
+    category: "Main Account Inflow"
+
+  # Unexpected / Refund
+  - match: "Somtochukwu Nchekwubechukwu Obiana (Faster Payments)"
+    direction: in
+    category: "Unexpected / Refund"
+
+  # Asset Liquidation — selling investments sends proceeds back here
+  - match: "WWW.HL.CO.UK BRISTOL GBR"
+    direction: in
+    category: "Stocks & Shares"
+
+  # ── Bills ──────────────────────────────────────────────────────────────────
+
+  - match: "Lebara Mobile Limited London GBR"
+    category: "Bill - Phone & Internet"
+  - match: "THREE MOTO GLASGOW GBR"
+    category: "Bill - Phone & Internet"
+
+  # ── Food Supplies ─────────────────────────────────────────────────────────
+
+  - match: "W M MORRISONS DUMFRIES GBR"
+    category: "Food Supplies"
+  - match: "WM MORRISONS STORE DUMFRIES GBR"
+    category: "Food Supplies"
+  - match: "Lidl GB DUMFRIES GBR"
+    category: "Food Supplies"
+  - match: "TESCO STORES 2388 DUMFRIES GBR"
+    category: "Food Supplies"
+  - match: "MARKS&SPENCER PLC SACA DUMFRIES GBR"
+    category: "Food Supplies"
+  - match: "POUNDLAND LTD - 2114 DUMFRIES GBR"
+    category: "Food Supplies"
+
+  # ── Eating Out ────────────────────────────────────────────────────────────
+
+  - match: "DGHB CATERING DUMFRIES GBR"
+    category: "Eating Out"
+  - match: "MARCHBANK BAKERS THORNHILL DG3 GBR"
+    category: "Eating Out"
+  - match: "La Dolce Vita Dumfries GBR"
+    category: "Eating Out"
+  - match: "Enish Glasgow Glasgow GBR"
+    category: "Eating Out"
+  - match: "PPOINT_*McEwans Premie Dumfries GBR"
+    category: "Eating Out"
+  - match_regex: "^NYX\\*DCVendingLtd"
+    category: "Eating Out"
+  - match: "DC7 VENDING LIMITED AYRSHIRE GBR"
+    category: "Eating Out"
+
+  # ── Sundry ────────────────────────────────────────────────────────────────
+
+  - match: "RCGP (Direct Debit)"
+    category: "Sundry"
+  - match: "GENERAL MEDICAL C (Direct Debit)"
+    category: "Sundry"
+  - match_regex: "^MEDCOUNCIL/CONSEILMED"
+    category: "Sundry"
+  - match: "RP*My Local Surgery Lt Romsey GBR"
+    category: "Sundry"
+  - match: "DUMFRIES HOSPITALS LEA DUMFRIES GBR"
+    category: "Sundry"
+  - match: "SAVERS HEALTH & BEAUTY DUMFRIES GBR"
+    category: "Sundry"
+  - match: "SUPERDRUG STORES PLC DUMFRIES GBR"
+    category: "Sundry"
+  - match: "HOLLAND AND BARRETT DUMFRIES GBR"
+    category: "Sundry"
+  - match: "BOOTS 2265 LUTON GBR"
+    category: "Sundry"
+  - match: "Ali Mohammad Almasri (Bank Transfer)"
+    category: "Sundry"
+
+  # ── Holidays & Travel ─────────────────────────────────────────────────────
+
+  - match: "HOUSTONS MINI COACHES LOCKERBIE GBR"
+    category: "Holidays & Travel"
+  - match: "UBER *TRIP London GBR"
+    category: "Holidays & Travel"
+  - match: "UBER * PENDING London GBR"
+    category: "Holidays & Travel"
+  - match: "HARTHILL NORTH SF CONN SHOTTS LANARK GBR"
+    category: "Holidays & Travel"
+  - match: "ACA KIRKCALDY MG KIRKCALDY GBR"
+    category: "Holidays & Travel"
+  - match: "VF SERVICES (UK) LTD LONDON GBR"
+    category: "Holidays & Travel"
+  - match: "SumUp *McLeans taxi Dumfries GBR"
+    category: "Holidays & Travel"
+
+  # ── Car & Gas ─────────────────────────────────────────────────────────────
+
+  - match: "Adamira Driving School (Faster Payments)"
+    category: "Car & Gas"
+  - match: "DVSA SWANSEA GBR"
+    category: "Car & Gas"
+  - match: "HASTINGS DIRECT BEXHILL ON SE GBR"
+    category: "Car & Gas"
+
+  # ── Gifts/Entertainment/Misc ──────────────────────────────────────────────
+
+  - match: "AMAZON.CO.UK LONDON GBR"
+    category: "Gifts/Entertainment/Misc"
+  - match: "T K MAXX DUMFRIES GBR"
+    category: "Gifts/Entertainment/Misc"
+  - match: "BLUE INC - DUMFRIES DUMFRIES GBR"
+    category: "Gifts/Entertainment/Misc"
+  - match: "Vinted Vilnius GBR"
+    category: "Gifts/Entertainment/Misc"
+
+  # ── Charity / Donations ───────────────────────────────────────────────────
+
+  - match: "Somtochukwu Nchekwubechukwu Obiana (Faster Payments)"
+    direction: out
+    category: "Charity / Donations"
+
+  # ── Assets ────────────────────────────────────────────────────────────────
+
+  - match: "Transfer to Pot"
+    category: "Active Savings"
+
+  - match: "WWW.HL.CO.UK BRISTOL GBR"
+    direction: out
+    category: "Stocks & Shares ISA"

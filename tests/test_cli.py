@@ -226,17 +226,19 @@ def test_nonexistent_pdf_exit_4(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_missing_out_option_exit_4(tmp_path: Path) -> None:
-    """Omitting --out produces exit 4 with an appropriate error message."""
+def test_missing_out_option_uses_default_path(tmp_path: Path) -> None:
+    """Omitting --out causes the CLI to use a default output path (not exit 4).
+
+    The CLI defaults to <pdf-stem>.csv in the current working directory.
+    A fake PDF will fail at parse (exit 3), confirming --out is optional.
+    """
     pdf = tmp_path / "stmt.pdf"
     pdf.write_bytes(b"fake")
 
     r = runner.invoke(app, [str(pdf)])
 
-    assert r.exit_code == 4
-    combined = r.stdout + r.stderr
-    # The CLI should mention --out is required.
-    assert "--out" in combined or "required" in combined.lower()
+    # --out is optional; the CLI attempts to parse the PDF, fails with parse error (exit 3)
+    assert r.exit_code == 3
 
 
 # ---------------------------------------------------------------------------

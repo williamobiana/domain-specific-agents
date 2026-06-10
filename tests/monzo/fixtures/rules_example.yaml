@@ -1,0 +1,34 @@
+rules:
+  # O Okwu-Boms may have a joined continuation "Reference: ..." suffix
+  - match_regex: "^O Okwu-Boms"
+    direction: in
+    category: "Main Account Inflow"
+  - match: "TESCO STORES 2388 DUMFRIES GBR"
+    category: "Food Supplies"
+  - match: "AMAZON.CO.UK LONDON GBR"
+    category: "Gifts/Entertainment/Misc"
+  # Lebara may have a joined continuation "Reference: ..." suffix
+  - match_regex: "^Lebara Mobile Limited London GBR"
+    category: "Bill - Phone & Internet"
+  - match: "W M MORRISONS DUMFRIES GBR"
+    category: "Food Supplies"
+  - match: "UBER *TRIP London GBR"
+    category: "Holidays & Travel"
+  - match: "Transfer to Pot"
+    category: "Active Savings"
+  - match: "Lidl GB DUMFRIES GBR"
+    category: "Food Supplies"
+  - match: "WWW.HL.CO.UK BRISTOL GBR"
+    direction: in
+    category: "Stocks & Shares"
+  - match: "DGHB CATERING DUMFRIES GBR"
+    category: "Eating Out"
+  - match: "WWW.HL.CO.UK BRISTOL GBR"
+    direction: out
+    category: "Stocks & Shares ISA"
+  - match: "Somtochukwu Nchekwubechukwu Obiana (Faster Payments)"
+    direction: in
+    category: "Unexpected / Refund"
+  - match: "Somtochukwu Nchekwubechukwu Obiana (Faster Payments)"
+    direction: out
+    category: "Charity / Donations"

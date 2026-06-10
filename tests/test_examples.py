@@ -16,10 +16,10 @@ def test_rules_file_exists() -> None:
     assert RULES_FILE.exists()
 
 
-def test_rules_loads_eleven_rules() -> None:
-    """The rules file must contain exactly 11 rules."""
+def test_rules_loads_twelve_rules() -> None:
+    """The rules file must contain exactly 12 rules."""
     rules = load_rules(RULES_FILE)
-    assert len(rules) == 11
+    assert len(rules) == 12
 
 
 def test_food_supplies_rule() -> None:
@@ -95,7 +95,7 @@ def test_charity_rules() -> None:
         if r.category == Category.CHARITY_DONATIONS and r.direction == "out"
     ]
     names = {r.matcher.value for r in charity_out if isinstance(r.matcher, ExactMatch)}
-    assert names == {"GRACE AKANNI", "SOMTOCHUKWU NCHEKW", "MAUTON TOLULOPE HU"}
+    assert names == {"GRACE AKANNI", "SOMTOCHUKWU NCHEKW", "MAUTON TOLULOPE HU", "ABDULAKEEM SOLIHU"}
 
 
 def test_unexpected_refund_rules() -> None:
