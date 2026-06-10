@@ -37,6 +37,8 @@ rules:
     category: "Food Supplies"
   - match: "WM MORRISONS STORE DUMFRIES GBR"
     category: "Food Supplies"
+  - match: "MORRISONS DUMFRIES - 1 DUMFRIES GBR"
+    category: "Food Supplies"
   - match: "Lidl GB DUMFRIES GBR"
     category: "Food Supplies"
   - match: "TESCO STORES 2388 DUMFRIES GBR"
@@ -46,9 +48,16 @@ rules:
     category: "Food Supplies"
   - match: "POUNDLAND LTD - 2114 DUMFRIES GBR"
     category: "Food Supplies"
+  - match: "FARMFOODS 291 DUMFRIES GBR"
+    category: "Food Supplies"
+  # Regex covers both location variants (LOCKERBIE and DUMFRIES stores).
+  - match_regex: "^HOME BARGAINS"
+    category: "Food Supplies"
 
   # ── Eating Out ────────────────────────────────────────────────────────────
 
+  - match: "Eatery 53 Dumfries GBR"
+    category: "Eating Out"
   - match: "DGHB CATERING DUMFRIES GBR"
     category: "Eating Out"
   - match: "MARCHBANK BAKERS THORNHILL DG3 GBR"
@@ -96,8 +105,13 @@ rules:
   - match: "BOOTS 2265 LUTON GBR"
     category: "Sundry"
 
+  - match: "POST OFFICE COUNTER DUMFRIES GBR"
+    category: "Sundry"
+
   # Housemate/bill-split. Description includes a reference suffix.
   - match_regex: "^Ali Mohammad Almasri"
+    category: "Sundry"
+  - match_regex: "^Faizan Akbar"
     category: "Sundry"
 
   # Standalone "Reference: Ali …" lines arise when the merchant name wraps to
@@ -108,7 +122,9 @@ rules:
 
   # ── Holidays & Travel ─────────────────────────────────────────────────────
 
-  - match: "HOUSTONS MINI COACHES LOCKERBIE GBR"
+  # Regex needed: description format varies — sometimes "HOUSTONS MINI COACHES LOCKERBIE GBR",
+  # sometimes the full postal address with backslash separators.
+  - match_regex: "^HOUSTONS MINI COACHES"
     category: "Holidays & Travel"
   - match: "UBER *TRIP London GBR"
     category: "Holidays & Travel"
