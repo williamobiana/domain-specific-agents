@@ -101,12 +101,12 @@ def test_zero_fill(tmp_path: Path) -> None:
 
 
 def test_row_count(tmp_path: Path) -> None:
-    """CSV must contain exactly 38 rows (36 schema rows + 2 metadata header rows)."""
+    """CSV must contain exactly 39 rows (37 schema rows + 2 metadata header rows)."""
     out = tmp_path / "out.csv"
     write_csv(make_result(), make_statement(), out)
     content = out.read_text(encoding="utf-8")
     rows = [r for r in content.split("\n") if r]
-    assert len(rows) == 38
+    assert len(rows) == 39
 
 
 # ---------------------------------------------------------------------------

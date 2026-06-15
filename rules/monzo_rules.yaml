@@ -1,0 +1,201 @@
+rules:
+  # ── Inflows ────────────────────────────────────────────────────────────────
+
+  # Main Account Inflow: regular transfers into this account from another account.
+  # Monzo truncates sender names, so match by partial name.
+  - match: "O Okwu-Boms (Faster Payments)"
+    direction: in
+    category: "Main Account Inflow"
+
+  # Uppercase variant seen on some transfers (e.g. via Chase)
+  - match_regex: "OMASIRICHI OKWU-BOMS"
+    direction: in
+    category: "Main Account Inflow"
+
+  # Unexpected / Refund — transfers from known contacts.
+  # Real descriptions include a "Reference: ..." suffix, so use regex.
+  - match_regex: "^Somtochukwu Nchekwubechukwu Obiana"
+    direction: in
+    category: "Unexpected / Refund"
+
+  # Asset Liquidation — selling investments sends proceeds back here.
+  # Descriptions sometimes include extra continuation text, so use regex.
+  - match_regex: "WWW\\.HL\\.CO\\.UK BRISTOL GBR"
+    direction: in
+    category: "Stocks & Shares"
+
+  # ── Bills ──────────────────────────────────────────────────────────────────
+
+  - match: "Lebara Mobile Limited London GBR"
+    category: "Bill - Phone & Internet"
+  - match: "THREE MOTO GLASGOW GBR"
+    category: "Bill - Phone & Internet"
+
+  # ── Food Supplies ─────────────────────────────────────────────────────────
+
+  - match: "W M MORRISONS DUMFRIES GBR"
+    category: "Food Supplies"
+  - match: "WM MORRISONS STORE DUMFRIES GBR"
+    category: "Food Supplies"
+  - match: "MORRISONS DUMFRIES - 1 DUMFRIES GBR"
+    category: "Food Supplies"
+  - match: "Lidl GB DUMFRIES GBR"
+    category: "Food Supplies"
+  - match: "TESCO STORES 2388 DUMFRIES GBR"
+    category: "Food Supplies"
+  # Regex needed: description sometimes has page-boundary continuation appended.
+  - match_regex: "^MARKS&SPENCER PLC SACA DUMFRIES GBR"
+    category: "Food Supplies"
+  - match: "POUNDLAND LTD - 2114 DUMFRIES GBR"
+    category: "Food Supplies"
+  - match: "FARMFOODS 291 DUMFRIES GBR"
+    category: "Food Supplies"
+  # Regex covers both location variants (LOCKERBIE and DUMFRIES stores).
+  - match_regex: "^HOME BARGAINS"
+    category: "Food Supplies"
+
+  # ── Eating Out ────────────────────────────────────────────────────────────
+
+  - match: "Eatery 53 Dumfries GBR"
+    category: "Eating Out"
+  - match: "DGHB CATERING DUMFRIES GBR"
+    category: "Eating Out"
+  - match: "MARCHBANK BAKERS THORNHILL DG3 GBR"
+    category: "Eating Out"
+  - match: "La Dolce Vita Dumfries GBR"
+    category: "Eating Out"
+  - match: "Enish Glasgow Glasgow GBR"
+    category: "Eating Out"
+  - match: "PPOINT_*McEwans Premie Dumfries GBR"
+    category: "Eating Out"
+  - match_regex: "^NYX\\*DCVendingLtd"
+    category: "Eating Out"
+  - match: "DC7 VENDING LIMITED AYRSHIRE GBR"
+    category: "Eating Out"
+
+  # ── Sundry ────────────────────────────────────────────────────────────────
+
+  # Professional membership fees — descriptions include a reference suffix.
+  - match_regex: "^RCGP"
+    category: "Sundry"
+  - match_regex: "^GENERAL MEDICAL C"
+    category: "Sundry"
+
+  # Canadian Medical Council fee. No ^ anchor: this merchant name may appear
+  # mid-description due to a cross-page text joining artifact.
+  - match_regex: "MEDCOUNCIL/CONSEILMED"
+    category: "Sundry"
+
+  # CAD currency-conversion orphan: when MEDCOUNCIL wraps across pages, the
+  # main transaction row shows only the exchange rate note.
+  - match_regex: "^Amount: CAD"
+    direction: out
+    category: "Sundry"
+
+  - match: "RP*My Local Surgery Lt Romsey GBR"
+    category: "Sundry"
+  - match: "DUMFRIES HOSPITALS LEA DUMFRIES GBR"
+    category: "Sundry"
+  - match: "SAVERS HEALTH & BEAUTY DUMFRIES GBR"
+    category: "Sundry"
+  - match: "SUPERDRUG STORES PLC DUMFRIES GBR"
+    category: "Sundry"
+  - match: "HOLLAND AND BARRETT DUMFRIES GBR"
+    category: "Sundry"
+  - match: "BOOTS 2265 LUTON GBR"
+    category: "Sundry"
+
+  - match: "POST OFFICE COUNTER DUMFRIES GBR"
+    category: "Sundry"
+
+  # Housemate/bill-split. Description includes a reference suffix.
+  - match_regex: "^Ali Mohammad Almasri"
+    category: "Sundry"
+  - match_regex: "^Faizan Akbar"
+    category: "Sundry"
+
+  # Standalone "Reference: Ali …" lines arise when the merchant name wraps to
+  # the previous page and only the reference field is visible on this row.
+  - match_regex: "^Reference: Ali"
+    direction: out
+    category: "Sundry"
+
+  # ── Holidays & Travel ─────────────────────────────────────────────────────
+
+  # Regex needed: description format varies — sometimes "HOUSTONS MINI COACHES LOCKERBIE GBR",
+  # sometimes the full postal address with backslash separators.
+  - match_regex: "^HOUSTONS MINI COACHES"
+    category: "Holidays & Travel"
+  - match: "UBER *TRIP London GBR"
+    category: "Holidays & Travel"
+  - match_regex: "UBER \\* PENDING London GBR"
+    direction: out
+    category: "Holidays & Travel"
+  # Reversal/refund of a pending charge comes back as an inflow.
+  - match_regex: "UBER \\* PENDING London GBR"
+    direction: in
+    category: "Unexpected / Refund"
+  - match: "HARTHILL NORTH SF CONN SHOTTS LANARK GBR"
+    category: "Holidays & Travel"
+  - match: "ACA KIRKCALDY MG KIRKCALDY GBR"
+    category: "Holidays & Travel"
+  - match: "VF SERVICES (UK) LTD LONDON GBR"
+    category: "Holidays & Travel"
+  - match: "SumUp *McLeans taxi Dumfries GBR"
+    category: "Holidays & Travel"
+
+  # ── Car & Gas ─────────────────────────────────────────────────────────────
+
+  # Descriptions include a "Reference: Monzo-XXXXX" suffix.
+  - match_regex: "^Adamira Driving School"
+    category: "Car & Gas"
+  - match: "DVSA SWANSEA GBR"
+    category: "Car & Gas"
+  - match: "HASTINGS DIRECT BEXHILL ON SE GBR"
+    category: "Car & Gas"
+
+  # ── Gifts/Entertainment/Misc ──────────────────────────────────────────────
+
+  - match: "AMAZON.CO.UK LONDON GBR"
+    category: "Gifts/Entertainment/Misc"
+  - match: "T K MAXX DUMFRIES GBR"
+    category: "Gifts/Entertainment/Misc"
+  - match: "BLUE INC - DUMFRIES DUMFRIES GBR"
+    category: "Gifts/Entertainment/Misc"
+  # Real description includes full address: "Vinted\5 NEW STREET SQUARE\...GBR"
+  - match_regex: "Vinted"
+    direction: out
+    category: "Gifts/Entertainment/Misc"
+  # Sale income from Vinted is an inflow — classify as a refund/windfall.
+  - match_regex: "Vinted"
+    direction: in
+    category: "Unexpected / Refund"
+
+  # ── Charity / Donations ───────────────────────────────────────────────────
+
+  # Transfers out to a known contact. Real descriptions include a reference suffix.
+  - match_regex: "^Somtochukwu Nchekwubechukwu Obiana"
+    direction: out
+    category: "Charity / Donations"
+
+  # Self-transfers out to main Lloyds account (full name variants).
+  - match_regex: "^Omasirichi Okwu.Boms \\(Faster Payments\\)"
+    direction: out
+    category: "Charity / Donations"
+
+  # Standalone reference-only rows that appear when the merchant name wrapped
+  # to the previous page and only the reference field is visible on this row.
+  - match_regex: "^Reference: Omasirichi"
+    direction: out
+    category: "Charity / Donations"
+
+  # ── Assets ────────────────────────────────────────────────────────────────
+
+  # Regex needed: description sometimes includes the next transaction's name
+  # appended due to a page-boundary text joining artifact.
+  - match_regex: "^Transfer to Pot"
+    category: "Active Savings"
+
+  - match_regex: "WWW\\.HL\\.CO\\.UK BRISTOL GBR"
+    direction: out
+    category: "Stocks & Shares ISA"

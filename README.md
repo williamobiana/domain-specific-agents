@@ -1,16 +1,11 @@
-# lloyds-expense
+# bank-expense-tools
 
-A CLI tool that parses a **Lloyds Bank Classic statement PDF** and produces a categorised monthly cash-flow CSV.
+Two CLI tools that parse UK personal bank statement PDFs and produce categorised monthly cash-flow CSVs:
 
-## How it works
+- **`lloyds-expense`** — Lloyds Bank Classic personal account → one CSV per run
+- **`monzo-expense`** — Monzo personal account → one CSV per calendar month covered by the statement
 
-The pipeline has five stages:
-
-1. **Parse** — extracts metadata (period, sort code, balances, totals) and all transactions from the PDF using `pdfplumber`. Handles both structured table extraction and Lloyds' garbled accessibility-overlay text format.
-2. **Load rules** — reads a YAML file that maps transaction descriptions and type codes to budget categories. Rules are validated and compiled at load time.
-3. **Classify** — matches each transaction against the rules list in order. A transaction must match exactly one rule; any unmatched transactions abort the run.
-4. **Reconcile** — verifies that the sum of classified transactions equals the statement's stated money-in / money-out totals.
-5. **Write** — emits a fixed-schema CSV with section headers, subtotals, and a balance row.
+Both tools share the same budget schema and the same pipeline: parse → classify → reconcile → write. They are separate codebases because Lloyds and Monzo PDFs have incompatible formats.
 
 ## Installation
 
@@ -20,48 +15,37 @@ Requires Python 3.11+. Install with [uv](https://github.com/astral-sh/uv):
 uv sync
 ```
 
-## Usage
+---
+
+## lloyds-expense
+
+### How it works
+
+1. **Parse** — extracts metadata and transactions from the PDF using `pdfplumber`. Handles both structured table extraction and Lloyds' garbled accessibility-overlay text format.
+2. **Load rules** — reads a YAML file mapping transaction descriptions and type codes to budget categories.
+3. **Classify** — two-pass exact-then-regex matching. Any unmatched transactions abort the run.
+4. **Reconcile** — verifies classified totals equal the statement's Money In / Money Out figures.
+5. **Write** — emits a single fixed-schema CSV.
+
+### Usage
 
 ```sh
-lloyds-expense <statement.pdf> [--rules rules/rules.yaml] [--out output.csv] [--report-unmatched unmatched.txt]
+uv run lloyds-expense <statement.pdf>
 ```
 
-**Important**: The tool must run inside the project's virtual environment. On Linux/macOS activate it with:
+| Option | Default | Description |
+|---|---|---|
+| `--rules` | `rules/rules.yaml` | Path to YAML rules file |
+| `--out` | `<pdf-stem>.csv` in current directory | Output CSV path |
+| `--report-unmatched` | — | Write unmatched transactions to this file |
 
-```sh
-source .venv/bin/activate
-```
-
-If you do not activate the virtual environment, run the command via `uv` so it executes inside the project's env:
-
-```sh
-uv run lloyds-expense <statement.pdf> [--rules rules/rules.yaml] [--out output.csv] [--report-unmatched unmatched.txt]
-```
-
-| Argument | Description |
-|---|---|
-| `statement.pdf` | Path to the Lloyds Classic statement PDF (required) |
-| `--rules` | Path to the YAML rules file (default: `./rules/rules.yaml`) |
-| `--out` | Output CSV path (default: `<pdf-stem>.csv` in the current directory) |
-| `--report-unmatched` | Write unmatched transactions to this file instead of only printing them |
-
-### Exit codes
-
-| Code | Meaning |
-|---|---|
-| `0` | Success — CSV written |
-| `1` | One or more unmatched transactions — no CSV written |
-| `2` | Reconciliation mismatch — no CSV written |
-| `3` | PDF parse failure |
-| `4` | Bad input (missing file, bad rules config) |
-
-## Rules file
+### Rules file
 
 Rules live in `rules/rules.yaml`. Each rule maps a transaction to a budget category:
 
 ```yaml
 rules:
-  - match: NATIONAL SERV M/W   # exact description match (normalised)
+  - match: NATIONAL SERV M/W   # exact description match
     type: BGC                   # Lloyds type code (optional)
     direction: in               # "in" or "out" (optional)
     category: Salary
@@ -77,26 +61,102 @@ rules:
 - `match_regex` — regular expression applied against the normalised description
 - `type` — Lloyds type code filter; one of `BGC`, `DD`, `DEB`, `FPI`, `FPO`, `BP`, `CHG`, `CHQ`, `COR`, `CPT`, `DEP`, `FEE`, `MPI`, `MPO`, `PAY`, `SO`, `TFR`
 - `direction` — `in` or `out`
-- `category` — must be one of the supported budget categories (see below)
+- `category` — must be one of the supported budget categories
 
-Rules are matched in YAML file order. Exactly one of `match` / `match_regex` is required per rule. Duplicate rules (same matcher + type + direction) are rejected at load time.
+---
 
-## Budget categories
+## monzo-expense
 
-| Section | Category |
+### How it works
+
+1. **Parse** — extracts metadata and transactions from the PDF using word-position extraction (`pdfplumber`). Monzo PDFs have no structured table borders, so column layout is inferred from x-coordinates. Handles multi-line descriptions, Pot pages (ignored), and multi-month statements.
+2. **Load rules** — reads a YAML file mapping transaction descriptions to budget categories. No type code field (Monzo statements carry no transaction-type codes).
+3. **Classify** — two-pass exact-then-regex matching. Any unmatched transactions abort the run.
+4. **Split** — groups transactions by calendar month.
+5. **Reconcile** — verifies classified totals equal the statement's Total deposits / Total outgoings figures.
+6. **Write** — emits one CSV per calendar month (e.g. `2026-04.csv`, `2026-05.csv`).
+
+### Usage
+
+```sh
+uv run monzo-expense <statement.pdf>
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--rules` | `rules/monzo_rules.yaml` | Path to YAML rules file |
+| `--out-dir` | `./output` | Directory to write CSVs into |
+| `--report-unmatched` | — | Write unmatched transactions to this file |
+
+### Rules file
+
+Rules live in `rules/monzo_rules.yaml`. Monzo rules do **not** support a `type` field:
+
+```yaml
+rules:
+  - match: "O Okwu-Boms (Faster Payments)"
+    direction: in
+    category: "Main Account Inflow"
+
+  - match_regex: "^Adamira Driving School"   # covers "Reference: ..." suffixes
+    direction: out
+    category: "Car & Gas"
+```
+
+**Fields:**
+
+- `match` — exact description string
+- `match_regex` — regular expression applied against the normalised description
+- `direction` — `in` or `out` (optional)
+- `category` — must be one of the supported budget categories
+
+When a new statement produces unmatched transactions, add rules for the new descriptions and re-run.
+
+---
+
+## Budget schema
+
+Both tools produce CSVs with this fixed row order. Every category is always present, with `0.00` for months with no activity.
+
+| Section | Categories |
 |---|---|
 | Regular Inflows | Salary |
-| Irregular Inflows | Unexpected / Refund, Loan |
+| Irregular Inflows | Unexpected / Refund, Loan, Main Account Inflow *(Monzo only)* |
 | Asset Liquidation | Savings, Stocks & Shares |
+| **Total Income** | |
 | Regular Outflows | Rent, Bill - Council Tax, Bill - Electricity & Gas, Bill - Phone & Internet, Food Supplies, Debt, Car & Gas |
 | Irregular Outflows | Charity / Donations, Gifts/Entertainment/Misc, Sundry, Holidays & Travel, Education, Eating Out |
 | Assets | Active Savings, Lifetime ISA, Stocks & Shares ISA, Dividend Portfolio |
+| **Total Expenditure** | |
+| **Balance** | Total Income − Total Expenditure for that month |
+
+The **Balance** row is the monthly net. To get the actual account balance, add the opening balance carried forward from the previous month.
+
+---
+
+## Exit codes
+
+Both tools use the same exit codes:
+
+| Code | Meaning |
+|---|---|
+| `0` | Success — CSV(s) written |
+| `1` | One or more unmatched transactions — no CSV written |
+| `2` | Reconciliation mismatch — no CSV written |
+| `3` | PDF parse failure |
+| `4` | Bad input (missing file, bad rules config) |
+
+---
 
 ## Development
 
 ```sh
-# Run tests (requires 90% coverage)
+# Run all tests (requires 90% coverage on non-CLI modules)
 uv run pytest
+
+# Run tests for one tool only
+uv run pytest tests/monzo/
+uv run pytest tests/
 
 # Lint and format
 uv run ruff check .
@@ -106,4 +166,4 @@ uv run ruff format .
 uv run mypy src
 ```
 
-Test fixtures (synthetic PDFs) are generated by `tests/fixtures/create_fixtures.py` using `reportlab`.
+Test fixtures (synthetic PDFs) are generated by `tests/fixtures/create_fixtures.py` and `tests/monzo/fixtures/create_fixtures.py` using `reportlab`.
