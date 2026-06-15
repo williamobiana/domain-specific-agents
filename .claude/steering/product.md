@@ -2,18 +2,25 @@
 
 ## What this is
 
-A pair of command-line tools that convert UK personal-account bank statements (PDF) into categorised monthly cash-flow CSVs. The output mirrors a fixed personal-finance schema with named sections, line-item subtotals, and grand totals for income and expenditure.
+A set of command-line tools that convert UK personal-account bank statements (PDF) into categorised monthly cash-flow CSVs. The output mirrors a fixed personal-finance schema with named sections, line-item subtotals, and grand totals for income and expenditure.
 
-Two banks are supported, each as its own tool:
+Three banks are supported, each as its own tool:
 
 - **`lloyds-expense`** — one Lloyds Classic statement PDF → one CSV.
 - **`monzo-expense`** — one Monzo personal-account statement PDF → one CSV **per calendar month** covered by the statement.
+- **`revolut-expense`** — one Revolut GBP personal-account statement PDF → one CSV **per calendar month** covered by the statement.
 
-The tools share intent and schema shape but are deliberately separate codebases under `src/lloyds_expense/` and `src/monzo_expense/`. The two banks have incompatible statement formats — Lloyds has transaction-type codes and separate money-in / money-out columns; Monzo encodes direction in the sign of a single amount column, has no type codes, spans multiple months per PDF, and includes Pot concepts. Forcing one parser to cover both would compromise both. Schema and writer logic are duplicated by design; sharing comes only when a third bank arrives.
+The tools share intent and schema shape but are deliberately separate codebases under `src/lloyds_expense/`, `src/monzo_expense/`, and `src/revolut_expense/`. The three banks have incompatible statement formats:
+
+- **Lloyds** has transaction-type codes (FPO, DD, BGC, etc.) and separate money-in / money-out columns; one statement covers one period that always falls within a single billing month.
+- **Monzo** encodes direction in the sign of a single amount column, has no type codes, spans multiple months per PDF, and includes Pot statement pages that must be ignored.
+- **Revolut** has separate money-in / money-out columns (like Lloyds) and a running-balance column, but no transaction-type codes (like Monzo), spans multiple months per PDF (like Monzo), uses long-form English dates (`Apr 1, 2026`), and prefixes its transaction stream with a "Pending" section and trails it with a "Reverted" section — both of which must be excluded from the cash-flow view. Most transactions also carry a `Card: 535456******1161` continuation line and many carry currency-conversion or reference continuation lines.
+
+Forcing one parser to cover all three would compromise each. Schema and writer logic are duplicated by design; sharing comes only if a fourth bank arrives that justifies the abstraction.
 
 ## Problem
 
-Bank statements list transactions in chronological order with terse or noisy descriptions (`OMASIRICHI OKWU BO`, `HLAM REGULAR SAVIN`, `DGHB CATERING DUMFRIES GBR`, `MEDCOUNCIL/CONSEILMED OTTAWA CAN Amount: CAD -335.00. Exchange rate: 1.833105.`). Producing a monthly budget from a raw statement means manually classifying every line against a personal taxonomy — salary vs refund, rent vs council tax, savings transfer vs spending, internal top-up vs genuine income. Doing this by hand each month is slow and error-prone, and the totals never reconcile on the first pass.
+Bank statements list transactions in chronological order with terse or noisy descriptions (`OMASIRICHI OKWU BO`, `HLAM REGULAR SAVIN`, `DGHB CATERING DUMFRIES GBR`, `MEDCOUNCIL/CONSEILMED OTTAWA CAN Amount: CAD -335.00. Exchange rate: 1.833105.`, `Payment from ACTIVE SAVINGS CASH HUB`). Producing a monthly budget from a raw statement means manually classifying every line against a personal taxonomy — salary vs refund, rent vs council tax, savings transfer vs spending, internal top-up vs genuine income. Doing this by hand each month is slow and error-prone, and the totals never reconcile on the first pass.
 
 The tools remove the manual classification step. The user supplies one statement PDF and gets back CSVs laid out in their personal budget schema, with subtotals and grand totals computed, ready to paste into a tracking spreadsheet.
 
@@ -24,24 +31,26 @@ A single end user — the account holder — running it on their own machine aga
 ## What it does (in scope)
 
 - Accept exactly one statement PDF per invocation, from the bank that matches the tool being run.
-- Parse the transaction table, preserving date, description, signed amount, and direction. Lloyds additionally preserves the transaction-type code (FPO, DD, BGC, etc.); Monzo has no such codes.
-- For Monzo, re-join descriptions that wrap across multiple PDF rows (Faster Payments references, currency-conversion notes).
+- Parse the transaction table, preserving date, description, signed amount, and direction. Lloyds additionally preserves the transaction-type code (FPO, DD, BGC, etc.); Monzo and Revolut have no such codes.
+- For Monzo and Revolut, re-join descriptions that wrap across multiple PDF rows (Faster Payments references, currency-conversion notes, `To:` / `From:` lines, `Card:` lines, `Fee:` lines).
 - For Monzo, ignore Pot statement pages — they appear after the personal-account section and are not part of the cash-flow view. The pot deposits are already captured as `Transfer to Pot` rows in the main account stream.
+- For Revolut, ignore the **Pending** section (transactions not yet settled, listed before the main account-transactions table) and the **Reverted** section (transactions that were reversed, listed after the main table). Only the rows under "Account transactions from … to …" are part of the cash-flow view.
 - Classify each transaction against a user-maintained YAML rules file mapping descriptions (and, for Lloyds, transaction types) to schema categories.
-- Emit CSV(s) that match the budget schema exactly: every section header, every line item, every subtotal, and both grand totals are present, even if a category has zero activity. Lloyds produces one CSV per run; Monzo produces one CSV per calendar month covered by the statement.
+- Emit CSV(s) that match the budget schema exactly: every section header, every line item, every subtotal, and both grand totals are present, even if a category has zero activity. Lloyds produces one CSV per run; Monzo and Revolut each produce one CSV per calendar month covered by the statement.
 - Surface unclassified transactions clearly so the user can extend the rules file and re-run.
-- Reconcile: the sum of all classified amounts must equal the statement's reported totals. For Lloyds, that's the per-statement Money In / Money Out figures. For Monzo, that's the period-level `Total deposits` / `Total outgoings` on page 1, summed across all months. Any mismatch is reported.
+- Reconcile: the sum of all classified amounts must equal the statement's reported totals. For Lloyds, that's the per-statement Money In / Money Out figures. For Monzo, that's the period-level `Total deposits` / `Total outgoings` on page 1, summed across all months. For Revolut, that's the period-level `Money in` / `Money out` figures in the Balance summary on page 1, summed across all months. Any mismatch is reported.
 
 ## What it does not do (out of scope)
 
 - No multi-statement, multi-PDF, or batched processing. One PDF in, per invocation.
-- No banks other than Lloyds (Classic personal account) and Monzo (personal account). Joint accounts, business accounts, and Monzo Flex statements are not in scope.
+- No banks other than Lloyds (Classic personal account), Monzo (personal account), and Revolut (GBP personal account). Joint accounts, business accounts, Monzo Flex statements, and Revolut multi-currency / non-GBP statements are not in scope.
 - No auto-detection of bank from the PDF — the user picks the right tool.
 - No interactive classification, no LLM-assisted categorisation, no learning loop. Rules are explicit and user-edited.
 - No GUI, no web interface, no cloud sync.
 - No financial advice, forecasting, or budget recommendations — purely a transformation tool.
 - No persistence between runs beyond the rules file the user maintains.
 - No reconciliation of Monzo Pot statement pages against the main account `Transfer to Pot` rows. Pot flows are captured via those rows only.
+- No inclusion of Revolut's Pending or Reverted sections in the cash-flow output. Pending lines are not yet completed transactions; Reverted lines have already been undone and would double-count if included.
 
 ## Schema produced
 
@@ -49,7 +58,7 @@ Each output CSV contains these rows in this order, regardless of whether any giv
 
 **Inflows**
 - Regular Inflows: Salary → subtotal
-- Irregular Inflows: Unexpected / Refund, Loan, *Main Account Inflow (Monzo only)* → subtotal
+- Irregular Inflows: Unexpected / Refund, Loan, *Main Account Inflow (Monzo and Revolut only)* → subtotal
 - Asset Liquidation: Savings, Stocks & Shares → subtotal
 - **Total Income** (grand total)
 
@@ -60,22 +69,22 @@ Each output CSV contains these rows in this order, regardless of whether any giv
 - **Total Expenditure** (grand total)
 - Balance (Total Income − Total Expenditure)
 
-The two tools share this schema except for one Monzo-only addition: `Main Account Inflow` in the Irregular Inflows section. See "Schema deviations" below.
+All three tools share this schema except for one addition: `Main Account Inflow` in the Irregular Inflows section, present for Monzo and Revolut but not for Lloyds. See "Schema deviations" below.
 
 ## Success criteria
 
-1. Running either tool against a matching statement PDF produces CSV(s) in the schema above with no manual post-editing required, provided every transaction matches a rule.
+1. Running any of the tools against a matching statement PDF produces CSV(s) in the schema above with no manual post-editing required, provided every transaction matches a rule.
 2. When transactions don't match a rule, the tool exits non-zero, lists the unmatched lines, and produces no partial output — the user knows exactly what to add to the rules file.
 3. Computed totals reconcile to the statement's reported figures to the penny.
 4. A second run with the same inputs produces byte-identical output (deterministic).
 
 ## Schema deviations from the common schema
 
-The Monzo tool adds one category that does not exist in the Lloyds tool:
+The Monzo and Revolut tools each add one category that does not exist in the Lloyds tool:
 
-- **`Main Account Inflow`** (Irregular Inflows section, Monzo only). Monzo is used as a secondary spending account topped up frequently from the user's main account. These top-ups appear in the Monzo statement as positive Faster Payments from `O Okwu-Boms`. They are not income in any economic sense — they are internal transfers — but the schema is a closed enumeration with no "internal transfer" category, and they must land somewhere to make reconciliation arithmetic balance. Capturing them in a dedicated category keeps the Irregular Inflows subtotal meaningful (genuine refunds and loans stay separate). The Lloyds schema does not include this category because Lloyds is the user's main account — there is no equivalent inbound top-up pattern.
+- **`Main Account Inflow`** (Irregular Inflows section, Monzo and Revolut only). Both Monzo and Revolut are used as secondary spending accounts topped up frequently from the user's main Lloyds account. These top-ups appear in the Monzo statement as positive Faster Payments from `O Okwu-Boms`, and in the Revolut statement as `Payment from O OKWU-BOMS` (often with reference text such as `BORROWED`, `BORROW OOO`, `BORROW DEFINITELY`, `No more borrow`, `NO MORE BORROW`, or `Contribution`). They are not income in any economic sense — they are internal transfers — but the schema is a closed enumeration with no "internal transfer" category, and they must land somewhere to make reconciliation arithmetic balance. Capturing them in a dedicated category keeps the Irregular Inflows subtotal meaningful (genuine refunds and loans stay separate). The Lloyds schema does not include this category because Lloyds is the user's main account — there is no equivalent inbound top-up pattern.
 
-All other sections and categories are identical across both tools.
+All other sections and categories are identical across all three tools.
 
 ## Domain notes — known classifications for the Lloyds account
 
@@ -166,6 +175,89 @@ The user's standing classifications for recurring counterparties on the Monzo ac
 - **`Transfer to Pot`** → **Active Savings**. Daily pot deposits (1p savings challenge etc.).
 - **`WWW.HL.CO.UK BRISTOL GBR`** (money out) → **Stocks & Shares ISA**. Hargreaves Lansdown ISA contributions.
 
+## Domain notes — known classifications for the Revolut account
+
+The user's standing classifications for recurring counterparties on the Revolut GBP account. Like Monzo, Revolut has no transaction-type codes; matching uses description and direction only. Revolut descriptions are typically the merchant short-name (`Morrisons`, `Tesco`, `Hargreaves Lansdown`) with a continuation row beneath giving `To: <merchant address>, <location>` and `Card: 535456******1161`. The parser joins the merchant name and the `To:` / `From:` line into a single description; rules match against the joined form, which is the long-form merchant string used below.
+
+### Inflows
+
+- **`Payment from O OKWU-BOMS`** (money in, any reference — `BORROWED`, `BORROW OOO`, `BORROW DEFINITELY`, `No more borrow`, `NO MORE BORROW`, `Contribution`, or none) → **Main Account Inflow**. Top-ups from the user's main Lloyds account. By far the most frequent inflow line. Mirrors the Monzo `O Okwu-Boms (Faster Payments)` inflow.
+- **`Payment from OMASIRICHI OKWU BOMS`** (money in) → **Main Account Inflow**. Uppercase variant of the same counterparty, seen occasionally.
+- **`Payment from NATWEST HRPS PAYRO`** (money in, reference like `C1018215131/01`) → **Salary**. NatWest-routed HR Payroll deposit.
+- **`Payment from ACTIVE SAVINGS CASH HUB`** (money in, reference `SOW...`) → **Savings** (Asset Liquidation). Hargreaves Lansdown Active Savings cash hub paying funds back to Revolut. Treated as drawing down from an interest-bearing savings buffer, not as income.
+
+### Outflows — Internal transfers / Charity / Donations
+
+- **`To Omasirichi Okwu-Boms`** / **`To Omasirichi Okwu Boms`** (money out, Faster Payments) → **Charity / Donations**. Self-transfers back to the user's main Lloyds account. Same convention as the Monzo `Omasirichi Okwu-Boms (Faster Payments)` outflow.
+- **`To Somtochukwu Nchekwubechukwu Obiana`** (money out, Faster Payments) → **Charity / Donations**. Self-transfers to a secondary personal account. Same direction-disambiguation pattern as Monzo.
+
+### Outflows — Bills
+
+- **`Lebara mobile`** / **`Lebara Mobile Limited London GBR`** → **Bill - Phone & Internet**.
+
+### Outflows — Food Supplies
+
+- **`Morrisons`** (any `Wm Morrisons Store, Dumfries` / `Morr Dumfries, Dumfries` / `Morrisons Dumfries - 1, Dumfries, SCT` variant) → **Food Supplies**.
+- **`Tesco`** (any `Tesco Stores 2388, Dumfries` / `Tesco Stores 5969, Dumfries` / `Tesco Pfs 5452, Heathhall` variant) → **Food Supplies**. Includes the `Pfs` (petrol filling station) variant by default; override per-rule if treating petrol separately.
+- **`Lidl`** (`Lidl Gb, Dumfries` / `Lidl Gb Dumfries, Lidl Gb Dumfr, GBR`) → **Food Supplies**.
+- **`ALDI`** / **`Aldi`** (`Aldi Stores, Dumfries` / `Aldi, Dumfries, SCT`) → **Food Supplies**.
+- **`Marks & Spencer`** (`Marks&spencer Plc Saca, Dumfries`) → **Food Supplies** (typically grocery; override per-rule if needed).
+- **`Poundland`** (`Poundland Ltd - 2114, Dumfries`) → **Food Supplies**.
+- **`Iceland`** (`Iceland, Dumfries`) → **Food Supplies**.
+- **`Albaraka Halal`** (`Albaraka Halal, Dumfries, GBR`) → **Food Supplies**.
+- **`SPAR Food & Fuel`** / **`KeyStore`** / **`Fruits Roots`** → **Food Supplies**.
+
+### Outflows — Eating Out
+
+- **`Dghb Catering`** (`Dghb Catering, Dumfries`) → **Eating Out**.
+- **`Greggs`** (`Greggs Plc, Dumfries`) → **Eating Out**.
+- **`Costa Coffee`** (any `Costa Coffee 43011492, Manchester` / `Costa Coffee 43011529, Carlisle` / `Costa Coffee 43010497, Dumfries` variant) → **Eating Out**.
+- **`Starbucks`** → **Eating Out**.
+- **`Enish Glasgow`** → **Eating Out**.
+- **`The Halston`** (`The Halston Aparthotel, Carlisle`) → **Eating Out** if a small amount, **Holidays & Travel** if a room charge — needs per-rule disambiguation, often by amount; default to **Eating Out** as the most common pattern.
+- **`The Corner Eatery And`** / **`Top Stop Take Away`** / **`Embankment Cafe Co.`** / **`Shanghai Shanghai Oriental Buffet`** / **`Indian Greedy Coo`** / **`Sumup *the Flavour Hi`** / **`Royal Outpost`** → **Eating Out**.
+- **`Ppoint_*mcewans Premie`** (the "Premier" merchant line) → **Eating Out**.
+
+### Outflows — Holidays & Travel
+
+- **`Trainline`** (`Trainline, +443332022222, GBR`) → **Holidays & Travel**.
+- **`Travelodge`** / **`Travelodge by Wyndham`** (`Travelodg Travelodge G, Thame` / `Manchester`) → **Holidays & Travel**.
+- **`Bee Network`** / **`Metrolink`** / **`Manchester Central`** / **`Sumup *manchester Cen, Manchester`** → **Holidays & Travel**.
+- **`Euro Car Parks`** (`Euro Car Parks Ltd, Glasgow`) → **Holidays & Travel**.
+- **`TransferGo`** (`Transfergo, London`) → **Holidays & Travel** by user convention (remittances treated under travel for budget purposes; override per-rule if user changes mind).
+
+### Outflows — Car & Gas
+
+- **`Shell`** (`Shell 9 St Michaels St, Dumfries` / `Shell Collin 568, Dumfries`) → **Car & Gas**. Fuel.
+- **`Halfords`** (`Halfords 0847, Dumfries West`) → **Car & Gas**. Motor parts.
+- **`Focus Motor Store Ltd`** (`Focus Motor Store Ltd, Dumfries`) → **Car & Gas**.
+- **`Fonetech`** (`Fonetech, Dumfries, GBR`) — needs case-by-case rules; usually phone repair, classify per-incident.
+
+### Outflows — Sundry
+
+- **`Medcouncil`** (`Medcouncil, Ottawa, ON`, with CAD currency-conversion continuation line and sometimes a `Fee: £X.XX` line) → **Sundry**. Canadian Medical Council fee.
+- **`Holland & Barrett`** (`Holland & Barrett, Dumfries`) → **Sundry**.
+- **`Superdrug`** (`Superdrug Stores Plc, Dumfries`) → **Sundry**.
+- **`Savers`** (`Savers Health & Beauty, Dumfries`) → **Sundry**.
+- **`Merlin Office`** (`Merlin Office, Dumfries, GBR`) → **Sundry**.
+- **`British Heart Foundation`** → **Sundry** (or **Charity / Donations** by user preference).
+- **`Anthropic`** (`Anthropic, San Francisco, CA` and `Claude.ai Subscription, San Francisco, CA`) → **Sundry**. Claude subscription, may appear as a USD-converted line.
+
+### Outflows — Gifts/Entertainment/Misc
+
+- **`The Range`** (`The Range, Dumfries`) → **Gifts/Entertainment/Misc**.
+- **`A1 Trading`** (`A1 Trading, 7703789578, GA`, USD-converted) → **Gifts/Entertainment/Misc**.
+- **`Vue`** / **`Vue Cinemas`** / **`Boom Battle Bar Glasgo`** / **`Steam`** (`Steamgames.com ..., Hamburg, DEU`) → **Gifts/Entertainment/Misc**.
+- **`The Stove Network`** (`The Stove Network, Dumfries Dg1, SCT`) → **Gifts/Entertainment/Misc**.
+
+### Outflows — Charity / Donations (Revolut-specific small-value transfers)
+
+- **`To ER Li`** / **`To Williams Obiegbu`** / **`To JOHN ADEBOLA SAMUEL`** / **`To QUEEN IME OKPONGETE`** / **`Transfer to Annabel Aigbodion`** / **`Transfer to Hersh Hamad`** → **Charity / Donations** by default (transfers to other individuals). User may override per-rule.
+
+### Outflows — Assets
+
+- **`Hargreaves Lansdown`** (`Www.hl.co.uk, Bristol, LND`) → **Stocks & Shares ISA**. ISA contributions. May appear multiple times on the same day (chunked transfers).
+
 ---
 
-Both classification lists will grow. New counterparties added to the user's life mean new rules. The steering doc is updated when the *intent* changes (e.g. "Trading 212 is now my dividend portfolio, not my ISA", or "M&S is now treats, not groceries"), not when a one-off transaction appears.
+All classification lists will grow. New counterparties added to the user's life mean new rules. The steering doc is updated when the *intent* changes (e.g. "Trading 212 is now my dividend portfolio, not my ISA", "M&S is now treats, not groceries", or "TransferGo should be Charity, not Holidays & Travel"), not when a one-off transaction appears.
