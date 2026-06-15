@@ -52,8 +52,8 @@ addopts = "--cov=lloyds_expense --cov=monzo_expense --cov-fail-under=90"
 testpaths = ["tests"]
 
 [tool.coverage.run]
-+source = ["lloyds_expense", "monzo_expense"]
-+omit = ["*/cli.py", "*/__main__.py"]
+source = ["lloyds_expense", "monzo_expense"]
+omit = ["*/cli.py", "*/__main__.py"]
 
 [tool.coverage.report]
 show_missing = true
