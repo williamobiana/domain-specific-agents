@@ -38,7 +38,7 @@ The Lloyds Expense Tool is a command-line application that transforms a Lloyds B
 8. WHEN non-transaction tabular content appears in the PDF (such as the transaction-type-code legend on the final page) THEN the system SHALL ignore it and not emit Transaction records from it.
 9. WHEN descriptions are truncated by the bank in the PDF (visible as cut-off names, e.g., "SOMTOCHUKWU NCHEKW") THEN the system SHALL store the truncated form verbatim. Rules in the YAML file are expected to match against the truncated string as it appears in the statement, not the original full name.
 10. WHEN transactions are returned THEN the system SHALL preserve their document order (the order they appear in the PDF). The parser SHALL NOT reorder by date, amount, or any other field.
-11. IF the transaction table cannot be located in the PDF THEN the system SHALL exit with code 3 and report the specific parse failure, including the page number where parsing failed if determinable.
+11. WHEN `extract_tables()` cannot detect a valid transaction table in the PDF (e.g. because real Lloyds PDFs overlay accessibility column-header text on cell values, causing pdfplumber to merge them into garbled strings) THEN the system SHALL fall back to parsing raw page text line by line using regex patterns that reconstruct the date, description, type code, amount, and balance from the garbled format. IF this fallback also produces zero transactions, the system SHALL exit with code 3.
 12. IF the PDF parses but produces zero Transaction records THEN the parser SHALL still return a valid Statement object with an empty transactions list; the zero-transaction handling defined in R8 then applies.
 
 ---
@@ -50,7 +50,7 @@ The Lloyds Expense Tool is a command-line application that transforms a Lloyds B
 #### Acceptance Criteria
 
 1. WHEN the `--rules` option is supplied THEN the system SHALL load the YAML rules file from the specified path using `PyYAML` (`yaml.safe_load`). Comment preservation is not required because the tool never writes to the rules file — the user is the sole editor.
-2. WHEN `--rules` is not supplied THEN the system SHALL look for a rules file at the default location `~/.config/lloyds-expense/rules.yaml`; if neither is present, the system SHALL exit with code 4 and display a usage message.
+2. WHEN `--rules` is not supplied THEN the system SHALL look for a rules file at the default location `rules/rules.yaml` relative to the current working directory; if neither is present, the system SHALL exit with code 4 and display a usage message.
 3. WHEN the rules file is absent or unreadable THEN the system SHALL exit with code 4 and display a descriptive error message.
 4. WHEN the rules file is loaded THEN the system SHALL validate that every rule has exactly one matcher: either `match` (a non-empty exact string) or `match_regex` (a compilable regular expression pattern). In the internal `Rule` representation, this SHALL be encoded as a tagged union (`ExactMatch | RegexMatch`), not as two nullable fields.
 5. WHEN the rules file contains two or more rules whose matcher, `type`, and `direction` fields are all identical (treating `None` and absent as equivalent, and comparing regex matchers by source string) THEN the system SHALL exit with code 4, list the duplicate rules by line number, and refuse to proceed.
@@ -114,7 +114,7 @@ The Lloyds Expense Tool is a command-line application that transforms a Lloyds B
 
 #### Acceptance Criteria
 
-1. WHEN all transactions are classified and reconciliation passes THEN the system SHALL write a CSV to the path specified by `--out`.
+1. WHEN all transactions are classified and reconciliation passes THEN the system SHALL write a CSV to the path specified by `--out`, or to `./output/<pdf-stem>.csv` if `--out` was not supplied. The `output/` directory SHALL be created automatically if it does not exist.
 2. WHEN the CSV is written THEN the system SHALL prepend a metadata header recording the statement period (start date and end date), before the schema rows.
 3. WHEN the CSV is written THEN the system SHALL emit schema rows in the following fixed order, with no row omitted even if its value is zero:
    - Section header: Regular Inflows
@@ -137,6 +137,7 @@ The Lloyds Expense Tool is a command-line application that transforms a Lloyds B
    - Line items: Active Savings, Lifetime ISA, Stocks & Shares ISA, Dividend Portfolio
    - Subtotal: Assets subtotal
    - Grand total row: Total Expenditure
+   - Balance row: Balance (Total Income − Total Expenditure)
 4. WHEN a category has no transactions in the statement THEN the system SHALL still emit its row with a value of `0.00`.
 5. WHEN subtotals are computed THEN the system SHALL sum the `Decimal` values of all line items within the section, quantized to two decimal places.
 6. WHEN grand totals are computed THEN the system SHALL sum the `Decimal` values of all section subtotals within the respective inflow or outflow group.
@@ -162,12 +163,12 @@ The Lloyds Expense Tool is a command-line application that transforms a Lloyds B
 
 #### Acceptance Criteria
 
-1. WHEN the tool is invoked THEN the system SHALL accept the following signature: `lloyds-expense <statement.pdf> [--rules <rules.yaml>] --out <budget.csv> [--report-unmatched <path>]`.
-2. WHEN `--rules` is not supplied THEN the system SHALL fall back to `~/.config/lloyds-expense/rules.yaml` as specified in R3.2.
-3. WHEN `--out` is not supplied THEN the system SHALL exit with code 4 and display a usage message.
+1. WHEN the tool is invoked THEN the system SHALL accept the following signature: `lloyds-expense <statement.pdf> [--rules <rules.yaml>] [--out <budget.csv>] [--report-unmatched <path>]`.
+2. WHEN `--rules` is not supplied THEN the system SHALL fall back to `rules/rules.yaml` in the current working directory as specified in R3.2.
+3. WHEN `--out` is not supplied THEN the system SHALL default to `./output/<pdf-stem>.csv` and create the `output/` directory if absent.
 4. WHEN `--help` is requested THEN the system SHALL display all options, defaults, and exit codes via `typer`.
 5. WHEN the tool exits THEN the system SHALL use only the following exit codes: 0 (success), 1 (unmatched transactions), 2 (reconciliation mismatch), 3 (parse error), 4 (bad input).
-6. WHERE console output is produced THEN the system SHALL use `rich` for all stderr messages, including errors and warnings, and reserve stdout for any explicit plain-text reports.
+6. WHERE console output is produced THEN the system SHALL use `rich` for all stderr messages, including errors and warnings. On success (exit code 0) the system SHALL print the written CSV path to stdout.
 
 ---
 
@@ -177,7 +178,7 @@ The Lloyds Expense Tool is a command-line application that transforms a Lloyds B
 
 #### Acceptance Criteria
 
-1. WHEN the codebase is structured THEN the system SHALL contain the following modules under `src/statement_to_csv/`: `schema.py`, `errors.py`, `parser.py`, `rules.py`, `classifier.py`, `reconciler.py`, `writer.py`, and `cli.py`.
+1. WHEN the codebase is structured THEN the system SHALL contain the following modules under `src/lloyds_expense/`: `schema.py`, `errors.py`, `parser.py`, `rules.py`, `classifier.py`, `reconciler.py`, `writer.py`, and `cli.py`.
 2. WHERE `cli.py` is concerned THEN it SHALL be the only module that accesses `sys.argv`, writes to stdout/stderr directly, or calls `sys.exit`.
 3. WHERE `schema.py` is concerned THEN it SHALL define a closed enumeration of all valid categories and the canonical CSV row order.
 4. WHERE `errors.py` is concerned THEN it SHALL define a typed exception hierarchy used across all other modules.
@@ -199,7 +200,7 @@ The Lloyds Expense Tool is a command-line application that transforms a Lloyds B
 2. WHEN unmatched transactions are reported THEN the system SHALL display each transaction's date, description, type code, direction, and amount in a tabular format via `rich`.
 3. WHEN a reconciliation mismatch is reported THEN the system SHALL display the statement total, the computed total, and the difference in a clear format.
 4. WHEN a rules validation error is reported THEN the system SHALL list each invalid rule by its position in the YAML file and the nature of the violation.
-5. WHEN the tool exits with a non-zero code THEN the system SHALL have written all error output to stderr; stdout SHALL remain empty unless `--report-unmatched` produced a file (in which case stdout is still untouched — the report is a file, not piped output).
+5. WHEN the tool exits with a non-zero code THEN the system SHALL have written all error output to stderr and stdout SHALL remain empty. WHEN the tool exits with code 0 THEN the written CSV path SHALL have been printed to stdout.
 
 ---
 

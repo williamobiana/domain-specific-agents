@@ -16,10 +16,10 @@
   - _Requirements: R7.3, R10.1, R10.3_
 
 - [x] 2.2 Define `SchemaRow` dataclass and `SCHEMA_ORDER` constant
-  - Write the `SchemaRow(frozen=True)` dataclass with `kind: Literal["section_header", "line_item", "subtotal", "grand_total"]`, `section: Section | None`, `category: Category | None`, `label: str`, and `group: Literal["income", "expenditure"] | None` fields. The `group` field is populated on `section_header`, `subtotal`, and `grand_total` rows; it tells the writer which subtotals to sum for each grand total. Inflow sections (Regular Inflows, Irregular Inflows, Asset Liquidation) carry `group="income"`; outflow sections (Regular Outflows, Irregular Outflows, Assets) carry `group="expenditure"`. The `Total Income` grand total has `group="income"`; `Total Expenditure` has `group="expenditure"`. Line items leave `group=None` (their group is derivable from their section).
-  - Write the `SCHEMA_ORDER: list[SchemaRow]` constant encoding all 34 rows (section headers, 22 line items, 6 subtotals, 2 grand totals) in the exact fixed output order from R7.3
+  - Write the `SchemaRow(frozen=True)` dataclass with `kind: Literal["section_header", "line_item", "subtotal", "grand_total", "balance"]`, `section: Section | None`, `category: Category | None`, `label: str`, and `group: Literal["income", "expenditure"] | None` fields. The `group` field is populated on `section_header`, `subtotal`, and `grand_total` rows; it tells the writer which subtotals to sum for each grand total. Inflow sections carry `group="income"`; outflow sections carry `group="expenditure"`. The `balance` row has `group=None`.
+  - Write the `SCHEMA_ORDER: list[SchemaRow]` constant encoding all 35 rows (6 section headers, 22 line items, 6 subtotals, 2 grand totals, 1 balance row) in the exact fixed output order from R7.3
   - Implement `category_display_name(category: Category) -> str` and `section_for_category(category: Category) -> Section` helpers
-  - Write `test_schema.py` asserting enum completeness (22 categories, 6 sections), `SCHEMA_ORDER` length (34 rows), that every `Category` member appears exactly once as a line item, and that the `group` field is correctly assigned on every section header, subtotal, and grand-total row
+  - Write `test_schema.py` asserting enum completeness (22 categories, 6 sections), `SCHEMA_ORDER` length (35 rows), that every `Category` member appears exactly once as a line item, and that the `group` field is correctly assigned on every section header, subtotal, and grand-total row; the `balance` row is last
   - _Requirements: R7.3, R7.5, R7.6, R10.3_
 
 - [x] 3. Implement `errors.py` — typed exception hierarchy
@@ -47,15 +47,18 @@
   - Write `_is_transaction_table(table: list) -> bool` that checks the header row for the expected column set `["Date", "Description", "Type", "Money in", "Money out", "Balance"]` (case-insensitive, normalised)
   - Write `_parse_transaction_row(row: list, period_start: date, period_end: date) -> Transaction` that positionally extracts each column, strips thousand-separator commas from amounts, constructs `Decimal(str(cleaned))`, sets `direction` based on which amount column is populated, and expands the two-digit year using **cross-year-aware selection**: if the statement period spans two calendar years, assign the four-digit year by matching the transaction's month against the period — months ≥ `period_start.month` use `period_start.year`, otherwise use `period_end.year`. If the period sits within a single year, use that year directly. The current system date SHALL NOT be used.
   - Write `_is_non_transaction_row(row: list) -> bool` to identify and skip type-code legend rows
+  - Write `_parse_garbled_tx_line(line: str, period_start: date, period_end: date) -> Transaction | None` for the real-PDF fallback. Real Lloyds PDFs overlay accessibility column-header text on cell values so `extract_tables()` cannot detect rows; pdfplumber merges the overlay with cell values into garbled strings such as `"D0ate 1 Apr 26 DGescription RACE AKANNI TFype PO Moneyb Ilna n(k£.) 500.00Money Out (£) 58,920.71Balance (£)"`. Write separate `_GARBLED_TX_MONEY_OUT_RE` and `_GARBLED_TX_MONEY_IN_RE` regex patterns that reconstruct date (`d1 + d2 + Mon + yy`), description (`first_char + rest`), type code (`first_char + rest`), amount, and balance from this format. Return `None` for lines that match neither pattern.
   - Raise `ParseError` with page number when a row cannot be parsed
   - _Requirements: R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.8, R2.9, R2.10, R2.11_
 
 - [x] 4.4 Implement `parse_statement(path: Path) -> Statement`
   - Open the PDF with `pdfplumber`, iterate pages in document order, concatenate all valid transaction table rows across pages, construct the `Statement` dataclass
   - Handle unreadable / password-protected PDFs by catching `pdfplumber` exceptions and re-raising as `ParseError`
+  - **Primary path**: call `page.extract_tables()` on each page; process any table passing `_is_transaction_table`, skipping non-transaction rows via `_is_non_transaction_row`
+  - **Fallback path** (real PDFs): if the primary path produces zero transactions, iterate pages again and call `_parse_garbled_tx_line` on each text line; this handles real Lloyds PDFs where `extract_tables()` fails due to overlaid accessibility text
   - Return `Statement` with an empty `transactions` tuple when zero rows are found AND `money_in_total == Decimal("0.00")` AND `money_out_total == Decimal("0.00")` (per R8.1 — a genuinely empty statement)
-  - **Raise `ParseError`** when zero rows are found BUT either `money_in_total` or `money_out_total` is non-zero (per R8.2 — a parser fault, not a reconciliation issue; the statement claims activity but the parser produced no rows)
-  - **Verify the balance equation** as the final step before returning: `opening_balance + money_in_total - money_out_total == closing_balance` using exact `Decimal` equality. Raise `ParseError` on failure with the four values and the computed difference. This check lives in the parser, not the reconciler — a balance mismatch indicates a parser fault, not a classification fault.
+  - **Raise `ParseError`** when zero rows are found BUT either total is non-zero (per R8.2)
+  - **Verify the balance equation** as the final step: `opening_balance + money_in_total - money_out_total == closing_balance` using exact `Decimal` equality; raise `ParseError` on failure
   - _Requirements: R1.2, R1.3, R1.5, R2.7, R2.11, R2.12, R6.3, R8.1, R8.2, R10.5_
 
 - [x] 4.5 Write `test_parser.py` unit tests
@@ -134,20 +137,20 @@
 - [x] 8.2 Implement `write_csv(result, statement, out) -> None`
   - Open `out` for writing with `encoding="utf-8"`, `newline=""`, and use `csv.writer` with `csv.QUOTE_MINIMAL`
   - Write the metadata header rows with `statement.period_start` and `statement.period_end`
-  - Iterate `SCHEMA_ORDER` once: for `section_header` rows write label with empty value column; for `line_item` rows look up category total (default `Decimal("0.00")`) and write label + `str(value.quantize(Decimal("0.01")))`; for `subtotal` rows sum the line item values accumulated since the last section header; for `grand_total` rows sum all `subtotal` row values whose `SchemaRow.group` equals the grand total's own `group` field (`"income"` or `"expenditure"`)
+  - Iterate `SCHEMA_ORDER` once: for `section_header` rows write label with empty value column; for `line_item` rows look up category total (default `Decimal("0.00")`) and write label + `str(value.quantize(Decimal("0.01")))`; for `subtotal` rows sum the line item values accumulated since the last section header; for `grand_total` rows sum all `subtotal` row values whose `SchemaRow.group` equals the grand total's own `group` field (`"income"` or `"expenditure"`); for `balance` rows compute `income_grand_total - expenditure_grand_total`
   - Overwrite `out` silently if it already exists
   - _Requirements: R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R7.7, R7.8, R10.9_
 
 - [x] 8.3 Create `tests/fixtures/expected_output.csv` and write `test_writer.py`
   - Create `tests/fixtures/expected_output.csv` — the golden CSV output corresponding to `statement_minimal.pdf` + all transactions matched
-  - Write tests: golden file test asserts byte-for-byte match against `expected_output.csv`; zero-fill test asserts a category with no transactions emits `"0.00"`; all 34 schema rows present plus metadata header; output uses `\n` line endings; output uses `csv.QUOTE_MINIMAL` (no unnecessary quoting); determinism test runs the pipeline twice and asserts byte-identical files
+  - Write tests: golden file test asserts byte-for-byte match against `expected_output.csv`; zero-fill test asserts a category with no transactions emits `"0.00"`; all 35 schema rows present plus 2 metadata header rows = 37 rows total; `balance` row is last; output uses `\n` line endings; output uses `csv.QUOTE_MINIMAL` (no unnecessary quoting); determinism test runs the pipeline twice and asserts byte-identical files
   - _Requirements: R7.1–R7.8_
 
 - [x] 9. Implement `cli.py` — entry point and I/O boundary
 - [x] 9.1 Set up `typer` app and command signature
-  - Create `app = typer.Typer()` and define the `main` command with positional `statement_pdf: Path` and options `--rules: Optional[Path] = None`, `--out: Path` (required), `--report-unmatched: Optional[Path] = None`
-  - Validate `--out` is supplied (exit 4 with usage message if not)
-  - Resolve the default rules path to `~/.config/lloyds-expense/rules.yaml` when `--rules` is not provided
+  - Create `app = typer.Typer()` and define the `main` command with positional `statement_pdf: Path` and options `--rules: Optional[Path] = None`, `--out: Optional[Path] = None` (defaults to `./output/<pdf-stem>.csv`), `--report-unmatched: Optional[Path] = None`
+  - When `--out` is not supplied, default to `Path.cwd() / "output" / (statement_pdf.stem + ".csv")` (no error, no message)
+  - Resolve the default rules path to `Path.cwd() / "rules" / "rules.yaml"` when `--rules` is not provided
   - Validate that `statement_pdf` exists and is readable (exit 4 with `rich` error if not)
   - Validate that only one PDF argument was supplied (exit 4 if more)
   - Wire `__main__.py` to call `app()` from `cli.py`
@@ -158,8 +161,9 @@
   - Call `rules.load_rules`, catch `RulesConfigError`, format error with `rich` to stderr, exit 4
   - Call `classifier.classify`; if `result.unmatched` is non-empty: format `rich` table to stderr (date, description, type, amount, direction columns), write plain-text report to `--report-unmatched` path if supplied, exit 1
   - Call `reconciler.reconcile`; if `report.ok` is `False`: format `rich` reconciliation diff (expected, actual, difference) to stderr, exit 2. The reconciler no longer raises `ParseError` — balance-equation failures are caught upstream in `parser.parse_statement` and surface via the `ParseError` handler on the parser call above.
-  - Call `writer.write_csv`; exit 0 on success
-  - Ensure all `rich` output goes to stderr and stdout remains clean
+  - Call `out.parent.mkdir(parents=True, exist_ok=True)` before writing to ensure the output directory exists
+  - Call `writer.write_csv`; print the written path to stdout via `rich`; exit 0
+  - Ensure all error output goes to stderr; stdout is used only for the success path (written CSV path)
   - _Requirements: R5.1, R5.2, R5.3, R5.4, R6.4, R6.5, R6.6, R8.1, R8.2, R9.5, R9.6, R10.2, R11.1–R11.5_
 
 - [x] 9.3 Write `test_cli.py` integration tests using `typer.testing.CliRunner`
