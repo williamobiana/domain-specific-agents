@@ -47,7 +47,7 @@ def main(
     ] = None,
     out: Annotated[
         Path | None,
-        typer.Option("--out", help="Output CSV path (default: <pdf-stem>.csv in current directory)"),
+        typer.Option("--out", help="Output CSV path (default: ./output/<pdf-stem>.csv)"),
     ] = None,
     report_unmatched: Annotated[
         Path | None,
@@ -67,9 +67,9 @@ def main(
     # Input validation (exit code 4 for all failures here)
     # ------------------------------------------------------------------
 
-    # Default output path: <pdf-stem>.csv in the current working directory.
+    # Default output path: <pdf-stem>.csv inside ./output/
     if out is None:
-        out = Path.cwd() / (statement_pdf.stem + ".csv")
+        out = Path.cwd() / "output" / (statement_pdf.stem + ".csv")
 
     # R1.2 / task 9.1: statement_pdf must exist and be readable.
     if not statement_pdf.exists():
@@ -181,5 +181,7 @@ def main(
     # ------------------------------------------------------------------
     # Stage 5: Write the output CSV (exit code 0 on success)
     # ------------------------------------------------------------------
+    out.parent.mkdir(parents=True, exist_ok=True)
     write_csv(result, statement, out)
+    _console.print(str(out))
     # Typer defaults to exit 0 when the command function returns normally.
