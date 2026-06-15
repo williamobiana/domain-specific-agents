@@ -43,35 +43,38 @@
   - _Requirements: R2.1, R2.2, R2.3, R11.5_
 
 - [X] 4.2 Implement metadata extraction from PDF first page
-  - Write `_extract_metadata(page_text: str) -> dict` that uses regex to parse: the statement period (`DD Mon YYYY to DD Mon YYYY` — Monzo PDFs use four-digit years throughout), opening balance, closing balance, `Total deposits`, and `Total outgoings` from the first page text
-  - Both `total_deposits` and `total_outgoings` are always present as labelled fields on page 1; raise `ParseError` with a descriptive message when any required field cannot be located
+  - Write `_extract_metadata(page_text: str) -> dict` that uses regex to parse from the first page text:
+    - Statement period: `DD/MM/YYYY - DD/MM/YYYY` format (slash-separated, dash/en-dash separator)
+    - `Total outgoings`: amount appears BEFORE the label as `-£X.XX\nTotal outgoings`
+    - `Total deposits`: amount appears BEFORE the label as `+£X.XX\n...\nTotal deposits`
+    - Closing balance: the last `£X.XX` value before the "Personal Account balance" section marker
+    - Opening balance: derived as `closing_balance - total_deposits + total_outgoings` (not labeled explicitly in real Monzo PDFs)
+  - Raise `ParseError` with a descriptive message when any required field cannot be located
   - _Requirements: R2.12, R2.13, R11.5_
 
 - [X] 4.3 Implement Pot page detection
-  - Write `_is_pot_page(page_text: str) -> bool` that returns `True` when the page text contains a Pot-section marker. The marker is a heading line matching the pattern `r"^[A-Z][A-Za-z\s]+ Pot\b"` within the first 20% of lines, or a standalone heading line `"Pots"`. Test this function in isolation with representative page text strings.
-  - Pot pages always trail the personal-account section; once `_is_pot_page` returns `True` for any page, set a flag and skip all subsequent pages.
+  - Write `_is_pot_page(page_text: str) -> bool` that iterates over lines of the page text and returns `True` when the first non-empty (stripped) line starts with `"pot statement"` (case-insensitive). Real Monzo PDFs always begin Pot pages with this heading as the first meaningful line.
+  - Pot pages always trail the personal-account section; once `_is_pot_page` returns `True` for any page, stop iterating over subsequent pages.
   - _Requirements: R2.7_
 
 - [X] 4.4 Implement description line-joining for wrapped rows
-  - Write `_is_continuation_row(row: list) -> bool` that returns `True` when the date cell is empty (or does not match a date pattern) AND the description cell is non-empty AND both the amount and balance cells are empty. Rows that have a non-empty amount cell despite an empty date are treated as new transactions, not continuations.
-  - Implement a pending-row accumulator in the table-parsing loop:
-    - When a row with a valid date is encountered and a pending transaction exists, construct and emit the pending `Transaction` with `" ".join(pending_desc_parts)` as the description.
-    - When a continuation row is encountered, append `row[1].strip()` to `pending_desc_parts`.
-    - After the last row in the table, emit any remaining pending transaction.
+  - The parser uses word-position analysis rather than row accumulators. Write `_group_words_by_y(words, y_tolerance=3.0)` that buckets `pdfplumber` word dicts by `top` coordinate (merging words within `y_tolerance`) and returns them sorted ascending by y.
+  - Write `_split_row(words_in_row)` that partitions words by x-coordinate into four columns using fixed boundaries: date (`x0 < 135`), description (`135 ≤ x0 < 395`), amount (`395 ≤ x0 < 460`), balance (`x0 ≥ 460`).
+  - In `_extract_transactions_from_words`, classify rows: a transaction row has a date matching `^\d{1,2}/\d{2}/\d{4}$` AND non-empty amount and balance; a continuation row has description text but no date, amount, or balance words. Assign each continuation row to the nearest transaction row by the midpoint rule on y-coordinates. Reconstruct the full description by concatenating pre-transaction continuation parts, the inline description, and post-transaction continuation parts with a single space.
   - _Requirements: R2.6_
 
 - [X] 4.5 Implement transaction table extraction and amount parsing
-  - Write `_is_transaction_table(table: list) -> bool` that checks the header row for the expected Monzo column set `{"date", "description", "amount", "balance"}` (case-insensitive, normalised)
+  - The parser uses `page.extract_words()` and x-coordinate column boundaries (Task 4.4) rather than `page.extract_tables()`. Transaction rows are identified by a `DD/MM/YYYY` date word in the date column and non-empty amount and balance columns.
   - Write `_parse_amount_and_direction(raw: str) -> tuple[Decimal, Literal["in", "out"]]` that strips thousand-separator commas, constructs `Decimal(cleaned)`, derives `direction="in"` when `value >= 0` and `direction="out"` when `value < 0`, and returns `(abs(value), direction)`. Never use `float`.
-  - Write `_parse_transaction_row(row: list, period_start: date, period_end: date, page: int | None) -> Transaction` that positionally extracts each column. Monzo PDFs include four-digit years — parse dates with `datetime.strptime(date_str, "%d %b %Y")`, no year-expansion heuristic needed.
-  - Raise `ParseError` with the page number when any row cannot be parsed
+  - Parse transaction dates with `datetime.strptime(date_str, "%d/%m/%Y").date()` (slash-separated, four-digit year).
+  - Raise `ParseError` with the page number when any transaction row cannot be parsed.
   - _Requirements: R2.1, R2.2, R2.3, R2.4, R2.5, R2.8, R2.9, R2.10, R2.11_
 
 - [X] 4.6 Implement `parse_statement(path: Path) -> Statement`
   - Open the PDF with `pdfplumber`; catch open failures and re-raise as `ParseError`
   - Extract metadata from first page text via `_extract_metadata`
-  - Iterate pages: for each page call `_is_pot_page`; stop iterating once a Pot page is detected. On non-Pot pages, call `page.extract_tables()` and process any table passing `_is_transaction_table`, using the pending-row accumulator from Task 4.4 to handle continuation rows
-  - After all pages: handle zero-transaction edge cases — return a `Statement` with an empty `transactions` tuple when zero rows AND `total_deposits == Decimal("0.00")` AND `total_outgoings == Decimal("0.00")`; raise `ParseError` when zero rows but either total is non-zero
+  - Iterate pages: for each page call `_is_pot_page`; break once a Pot page is detected. On non-Pot pages, call `page.extract_words()`. On page 1, call `_find_table_start_y` (looks for a header row with "Date" in the date column and "Description" in the description column) and filter out words above that y; then call `_extract_transactions_from_words` (Task 4.4) on the remaining words.
+  - After all pages: handle zero-transaction edge cases — return a `Statement` with an empty `transactions` tuple when zero rows AND both totals are `Decimal("0.00")`; raise `ParseError` when zero rows but either total is non-zero
   - Verify the balance equation as the final step: `opening_balance + total_deposits - total_outgoings == closing_balance` using exact `Decimal` equality; raise `ParseError` on failure with all four values and the computed difference
   - _Requirements: R1.2, R1.3, R1.5, R2.7, R2.9, R2.11, R2.14, R2.15, R7.3, R9.1, R9.2_
 
@@ -192,9 +195,9 @@
 
 - [X] 10. Implement `cli.py` — entry point and I/O boundary
 - [X] 10.1 Set up `typer` app and command signature
-  - Create `app = typer.Typer(name="monzo-expense", add_completion=False)` and define the `main` command with positional `statement_pdf: Path` and options `--rules: Optional[Path] = None`, `--out-dir: Path` (required), `--report-unmatched: Optional[Path] = None`
-  - Validate `--out-dir` is supplied (exit 4 with usage message via `rich` if not)
-  - Resolve the default rules path to `~/.config/monzo-expense/rules.yaml` when `--rules` is not provided; if neither `--rules` nor the default path exists, exit 4 with a usage message
+  - Create `app = typer.Typer(name="monzo-expense", add_completion=False)` and define the `main` command with positional `statement_pdf: Path` and options `--rules: Optional[Path] = None`, `--out-dir: Optional[Path] = None` (defaults to `./output`), `--report-unmatched: Optional[Path] = None`
+  - When `--out-dir` is not supplied, default to `Path.cwd() / "output"` (no error, no message)
+  - Resolve the default rules path when `--rules` is not provided: check `Path.cwd() / "rules" / "monzo_rules.yaml"` first, then `Path.home() / ".config" / "monzo-expense" / "rules.yaml"`; if neither exists, exit 4 with a message listing both paths
   - Validate that `statement_pdf` exists and is a readable file (exit 4 with `rich` error if not)
   - Wire `__main__.py` to call `app()`
   - _Requirements: R1.1, R1.2, R1.4, R10.1, R10.2, R10.3, R10.4, R11.2_
@@ -215,20 +218,19 @@
 
 ---
 
-- [X] 11. Create example rules file and seed data
-  - Create `examples/monzo_rules.example.yaml` with rules covering all known counterparties documented in the steering file (`product.md`). Include all entries under "Domain notes — known classifications for the Monzo account":
-    - Inflows: `O Okwu-Boms (Faster Payments)` direction `in` → `Main Account Inflow`; `Somtochukwu Nchekwubechukwu Obiana (Faster Payments)` direction `in` → `Unexpected / Refund`; `WWW.HL.CO.UK BRISTOL GBR` direction `in` → `Stocks & Shares`
-    - Bills: `Lebara Mobile Limited London GBR` and `THREE MOTO GLASGOW GBR` → `Bill - Phone & Internet`
-    - Food Supplies: `W M MORRISONS DUMFRIES GBR`, `WM MORRISONS STORE DUMFRIES GBR`, `Lidl GB DUMFRIES GBR`, `TESCO STORES 2388 DUMFRIES GBR`, `MARKS&SPENCER PLC SACA DUMFRIES GBR`, `POUNDLAND LTD - 2114 DUMFRIES GBR`
-    - Eating Out: `DGHB CATERING DUMFRIES GBR`, `MARCHBANK BAKERS THORNHILL DG3 GBR`, `La Dolce Vita Dumfries GBR`, `Enish Glasgow Glasgow GBR`, `PPOINT_*McEwans Premie Dumfries GBR`, `match_regex: "^NYX\*DCVendingLtd"`, `DC7 VENDING LIMITED AYRSHIRE GBR`
-    - Sundry: `RCGP (Direct Debit)`, `GENERAL MEDICAL C (Direct Debit)`, `match_regex: "^MEDCOUNCIL/CONSEILMED"` (to tolerate the variable CAD conversion suffix), `RP*My Local Surgery Lt Romsey GBR`, `DUMFRIES HOSPITALS LEA DUMFRIES GBR`, `SAVERS HEALTH & BEAUTY DUMFRIES GBR`, `SUPERDRUG STORES PLC DUMFRIES GBR`, `HOLLAND AND BARRETT DUMFRIES GBR`, `BOOTS 2265 LUTON GBR`, `Ali Mohammad Almasri (Bank Transfer)`
-    - Holidays & Travel: `HOUSTONS MINI COACHES LOCKERBIE GBR`, `UBER *TRIP London GBR`, `UBER * PENDING London GBR`, `HARTHILL NORTH SF CONN SHOTTS LANARK GBR`, `ACA KIRKCALDY MG KIRKCALDY GBR`, `VF SERVICES (UK) LTD LONDON GBR`, `SumUp *McLeans taxi Dumfries GBR`
-    - Car & Gas: `Adamira Driving School (Faster Payments)`, `DVSA SWANSEA GBR`, `HASTINGS DIRECT BEXHILL ON SE GBR`
-    - Gifts/Entertainment/Misc: `AMAZON.CO.UK LONDON GBR`, `T K MAXX DUMFRIES GBR`, `BLUE INC - DUMFRIES DUMFRIES GBR`, `Vinted Vilnius GBR`
-    - Charity/Donations: `Somtochukwu Nchekwubechukwu Obiana (Faster Payments)` direction `out`
-    - Assets outflows: `Transfer to Pot` → `Active Savings`; `WWW.HL.CO.UK BRISTOL GBR` direction `out` → `Stocks & Shares ISA`
-    - Do **not** include a blanket rule for `Omasirichi Okwu-Boms (Faster Payments)` with `direction: out` (R13.12)
-  - Write a test in `tests/monzo/test_examples.py` that loads `examples/monzo_rules.example.yaml` and asserts: the file loads without error; the key rules are present with correct matcher, direction, and category; `MAIN_ACCOUNT_INFLOW` is used for the `O Okwu-Boms (Faster Payments)` rule; the `MEDCOUNCIL` rule uses `match_regex`; no rule has a `type` field; the `WWW.HL.CO.UK` counterparty has two separate rules (one `direction: in`, one `direction: out`) with different categories
+- [X] 11. Create live rules file
+  - The live rules file is at `rules/monzo_rules.yaml` (project-local default discovered by the CLI). It includes:
+    - Inflows: exact `O Okwu-Boms (Faster Payments)` direction `in` → `Main Account Inflow`; `match_regex: "OMASIRICHI OKWU-BOMS"` direction `in` → `Main Account Inflow` (uppercase Chase variant); `match_regex: "^Somtochukwu Nchekwubechukwu Obiana"` direction `in` → `Unexpected / Refund`; `match_regex: "WWW\\.HL\\.CO\\.UK BRISTOL GBR"` direction `in` → `Stocks & Shares`
+    - Bills: exact `Lebara Mobile Limited London GBR` and `THREE MOTO GLASGOW GBR` → `Bill - Phone & Internet`
+    - Food Supplies: exact `W M MORRISONS DUMFRIES GBR`, `WM MORRISONS STORE DUMFRIES GBR`, `MORRISONS DUMFRIES - 1 DUMFRIES GBR`, `Lidl GB DUMFRIES GBR`, `TESCO STORES 2388 DUMFRIES GBR`, `POUNDLAND LTD - 2114 DUMFRIES GBR`, `FARMFOODS 291 DUMFRIES GBR`; `match_regex: "^MARKS&SPENCER PLC SACA DUMFRIES GBR"`; `match_regex: "^HOME BARGAINS"`
+    - Eating Out: exact `Eatery 53 Dumfries GBR`, `DGHB CATERING DUMFRIES GBR`, `MARCHBANK BAKERS THORNHILL DG3 GBR`, `La Dolce Vita Dumfries GBR`, `Enish Glasgow Glasgow GBR`, `PPOINT_*McEwans Premie Dumfries GBR`, `DC7 VENDING LIMITED AYRSHIRE GBR`; `match_regex: "^NYX\\*DCVendingLtd"`
+    - Sundry: `match_regex: "^RCGP"`, `match_regex: "^GENERAL MEDICAL C"`, `match_regex: "MEDCOUNCIL/CONSEILMED"` (no anchor), `match_regex: "^Amount: CAD"` direction `out`; exact `RP*My Local Surgery Lt Romsey GBR`, `DUMFRIES HOSPITALS LEA DUMFRIES GBR`, `SAVERS HEALTH & BEAUTY DUMFRIES GBR`, `SUPERDRUG STORES PLC DUMFRIES GBR`, `HOLLAND AND BARRETT DUMFRIES GBR`, `BOOTS 2265 LUTON GBR`, `POST OFFICE COUNTER DUMFRIES GBR`; `match_regex: "^Ali Mohammad Almasri"`, `match_regex: "^Faizan Akbar"`, `match_regex: "^Reference: Ali"` direction `out`
+    - Holidays & Travel: `match_regex: "^HOUSTONS MINI COACHES"`; exact `UBER *TRIP London GBR`; `match_regex: "UBER \\* PENDING London GBR"` direction `out` → `Holidays & Travel` AND direction `in` → `Unexpected / Refund`; exact `HARTHILL NORTH SF CONN SHOTTS LANARK GBR`, `ACA KIRKCALDY MG KIRKCALDY GBR`, `VF SERVICES (UK) LTD LONDON GBR`, `SumUp *McLeans taxi Dumfries GBR`
+    - Car & Gas: `match_regex: "^Adamira Driving School"`, exact `DVSA SWANSEA GBR`, `HASTINGS DIRECT BEXHILL ON SE GBR`
+    - Gifts/Entertainment/Misc: exact `AMAZON.CO.UK LONDON GBR`, `T K MAXX DUMFRIES GBR`, `BLUE INC - DUMFRIES DUMFRIES GBR`; `match_regex: "Vinted"` direction `out` → `Gifts/Entertainment/Misc` AND direction `in` → `Unexpected / Refund`
+    - Charity/Donations: `match_regex: "^Somtochukwu Nchekwubechukwu Obiana"` direction `out`; `match_regex: "^Omasirichi Okwu.Boms \\(Faster Payments\\)"` direction `out`; `match_regex: "^Reference: Omasirichi"` direction `out`
+    - Assets: `match_regex: "^Transfer to Pot"` → `Active Savings`; `match_regex: "WWW\\.HL\\.CO\\.UK BRISTOL GBR"` direction `out` → `Stocks & Shares ISA`
+  - Write a test in `tests/monzo/test_examples.py` that loads `rules/monzo_rules.yaml` and asserts: the file loads without error; the key rules are present with correct matcher type, direction, and category; `MAIN_ACCOUNT_INFLOW` is used for the `O Okwu-Boms` rule; `OMASIRICHI OKWU-BOMS` uses `match_regex` and maps to `Main Account Inflow`; the `MEDCOUNCIL` rule uses `match_regex`; no rule has a `type` field; the `WWW.HL.CO.UK` counterparty has two separate `match_regex` rules (one `direction: in`, one `direction: out`) with different categories; `UBER * PENDING` has two direction-split rules; `Vinted` has two direction-split rules
   - _Requirements: R13.1–R13.12_
 
 ---
