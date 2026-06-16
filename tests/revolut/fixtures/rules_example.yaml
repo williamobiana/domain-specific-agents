@@ -1,0 +1,40 @@
+rules:
+  # Salary / inflows
+  - match_regex: "^Payment from NATWEST HRPS PAYRO"
+    direction: in
+    category: "Salary"
+
+  # Food supplies
+  - match_regex: "^Morrisons"
+    category: "Food Supplies"
+  - match_regex: "^Tesco"
+    category: "Food Supplies"
+  - match_regex: "^Lidl"
+    category: "Food Supplies"
+
+  # Eating out
+  - match_regex: "^Dghb Catering"
+    category: "Eating Out"
+  - match_regex: "^Greggs"
+    category: "Eating Out"
+
+  # Phone & Internet
+  - match_regex: "^Lebara"
+    category: "Bill - Phone & Internet"
+
+  # Stocks & Shares ISA
+  - match_regex: "^Hargreaves Lansdown"
+    direction: out
+    category: "Stocks & Shares ISA"
+
+  # Holidays & Travel
+  - match_regex: "^Trainline"
+    category: "Holidays & Travel"
+
+  # Car & Gas
+  - match_regex: "^Shell"
+    category: "Car & Gas"
+
+  # Sundry
+  - match_regex: "^Anthropic"
+    category: "Sundry"
