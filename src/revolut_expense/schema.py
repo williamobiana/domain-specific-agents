@@ -14,7 +14,6 @@ class Category(enum.Enum):
     # Irregular Inflows
     UNEXPECTED_REFUND = "Unexpected / Refund"
     LOAN = "Loan"
-    MAIN_ACCOUNT_INFLOW = "Main Account Inflow"
 
     # Asset Liquidation
     SAVINGS = "Savings"
@@ -70,7 +69,6 @@ _SECTION_CATEGORY_MAP: dict[Category, Section] = {
     Category.SALARY: Section.REGULAR_INFLOWS,
     Category.UNEXPECTED_REFUND: Section.IRREGULAR_INFLOWS,
     Category.LOAN: Section.IRREGULAR_INFLOWS,
-    Category.MAIN_ACCOUNT_INFLOW: Section.IRREGULAR_INFLOWS,
     Category.SAVINGS: Section.ASSET_LIQUIDATION,
     Category.STOCKS_AND_SHARES: Section.ASSET_LIQUIDATION,
     Category.RENT: Section.REGULAR_OUTFLOWS,
@@ -140,7 +138,6 @@ SCHEMA_ORDER: list[SchemaRow] = [
     ),
     _li(Category.UNEXPECTED_REFUND),
     _li(Category.LOAN),
-    _li(Category.MAIN_ACCOUNT_INFLOW),
     SchemaRow(
         kind="subtotal",
         section=Section.IRREGULAR_INFLOWS,
