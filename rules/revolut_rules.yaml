@@ -6,6 +6,9 @@ rules:
   - match_regex: "^Payment from OMASIRICHI OKWU BOMS"
     direction: in
     category: "Unexpected / Refund"
+  - match_regex: "^Payment from OBIANA S N"
+    direction: in
+    category: "Unexpected / Refund"
 
   # Salary
   - match_regex: "^Payment from NATWEST HRPS PAYRO"
@@ -102,6 +105,12 @@ rules:
     category: "Eating Out"
   - match_regex: "^Premier"
     category: "Eating Out"
+  - match_regex: "^Bobandberts"
+    category: "Eating Out"
+  - match_regex: "^The Market Pla"
+    category: "Eating Out"
+  - match_regex: "^Eatery 53"
+    category: "Eating Out"
 
   # Holidays & Travel
   - match_regex: "^Trainline"
@@ -128,6 +137,8 @@ rules:
     category: "Car & Gas"
   - match_regex: "^Focus Motor Store"
     category: "Car & Gas"
+  - match_regex: "^Nayax Mfg Wilcomatic"
+    category: "Car & Gas"
 
   # Sundry
   - match_regex: "^Medcouncil"
@@ -148,6 +159,8 @@ rules:
     category: "Sundry"
 
   # Gifts/Entertainment/Misc
+  - match_regex: "^TK Maxx"
+    category: "Gifts/Entertainment/Misc"
   - match_regex: "^The Range"
     category: "Gifts/Entertainment/Misc"
   - match_regex: "^A1 Trading"
