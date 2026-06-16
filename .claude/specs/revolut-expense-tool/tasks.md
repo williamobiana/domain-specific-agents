@@ -44,54 +44,60 @@
 
 - [x] 4.2 Implement Balance summary and period metadata extraction
   - Write `_extract_metadata(page_text: str) -> dict` that uses regex to parse from the first page text:
-    - Balance summary (`Account (E-Money)` row): `Opening balance`, `Money out` (total), `Money in` (total), `Closing balance` — all as `Decimal` values with `£` prefix and optional thousand-separator commas stripped
-    - Statement period: extracted from the `"Account transactions from <start> to <end>"` header using long-form English dates (e.g. `April 1, 2026 to May 24, 2026`); both boundary dates are parsed with `datetime.strptime`
-    - Account metadata: `sort_code`, `account_number`, `iban`, `bic` from labelled lines near the top of page 1
-  - Regexes to use:
-    - `_OPENING_BALANCE_RE = re.compile(r"Opening balance\s+£([\d,]+\.\d{2})")`
-    - `_CLOSING_BALANCE_RE = re.compile(r"Closing balance\s+£([\d,]+\.\d{2})")`
-    - `_MONEY_IN_RE = re.compile(r"Money in\s+£([\d,]+\.\d{2})")`
-    - `_MONEY_OUT_RE = re.compile(r"Money out\s+£([\d,]+\.\d{2})")`
-    - `_PERIOD_RE = re.compile(r"Account transactions from\s+(\w+ \d{1,2}, \d{4})\s+to\s+(\w+ \d{1,2}, \d{4})", re.IGNORECASE)`
+    - Balance summary (`Account (E-Money)` row): opening balance, total money out, total money in, closing balance — all as `Decimal` values with `£` prefix and optional thousand-separator commas stripped. **Important:** in real Revolut PDFs, `extract_text()` renders all four balance values sequentially on the `Account (E-Money)` row (the column header labels appear on a separate preceding line). Use a single regex that captures all four values in order:
+      - `_ACCOUNT_EMONEY_RE = re.compile(r"Account \\(E-Money\\)\\s+£([\\d,]+\\.\\d{2})\\s+£([\\d,]+\\.\\d{2})\\s+£([\\d,]+\\.\\d{2})\\s+£([\\d,]+\\.\\d{2})")` where group 1 = opening balance, group 2 = money out total, group 3 = money in total, group 4 = closing balance
+    - Statement period: extracted from the `"Account transactions from <start> to <end>"` header using **full** month names (e.g. `April 1, 2026 to May 24, 2026`); parse with `datetime.strptime(date_str, "%B %d, %Y")`
+      - `_PERIOD_RE = re.compile(r"Account transactions from\\s+(\\w+ \\d{1,2}, \\d{4})\\s+to\\s+(\\w+ \\d{1,2}, \\d{4})", re.IGNORECASE)`
+    - Account metadata: `sort_code`, `account_number`, `iban`, `bic` from labelled lines near the top of page 1. Sort code appears without dashes in real PDFs (e.g. `Sort Code 042909`); extract raw digits and format as `XX-XX-XX`:
+      - `re.search(r"Sort Code\\s+(\\d+)", page_text, re.IGNORECASE)` then `f"{raw[:2]}-{raw[2:4]}-{raw[4:6]}"` if `len(raw) == 6`
   - Raise `ParseError` with a descriptive message when any required field (balance summary, period) cannot be located
   - _Requirements: R2.15, R2.16, R2.17, R11.5_
 
 - [x] 4.3 Implement section detection state machine
-  - Write `_detect_section(first_cell: str) -> Literal["pending", "account_transactions", "reverted"] | None` that returns the section name when the first cell text (stripped, lowercased) starts with one of the three header phrases: `"pending from"`, `"account transactions from"`, `"reverted from"`. Returns `None` for non-header rows.
+  - Write `_detect_section(row_text: str) -> Literal["pending", "account_transactions", "reverted"] | None` that returns the section name when the **full row text** (all words joined, stripped, lowercased) starts with one of the three header phrases: `"pending from"`, `"account transactions from"`, `"reverted from"`. Returns `None` for non-header rows. **Note:** because real Revolut PDFs have no table structure (see Task 4.6), the argument is the full concatenated row string, not a cell value.
   - In the main page-iteration loop, maintain `current_section: str | None = None`. On each row:
-    - If `_detect_section` returns a non-None value, update `current_section` and continue to the next row (do not emit a transaction from the header row itself)
+    - Build `row_text = " ".join(w["text"] for w in row_words)` first
+    - If `_detect_section(row_text)` returns a non-None value, emit any pending transaction, update `current_section`, and continue to the next row (do not emit a transaction from the header row itself)
     - If `current_section != "account_transactions"`, skip the row entirely (this covers both Pending and Reverted sections, and any rows before the first header)
     - Only when `current_section == "account_transactions"` do rows get processed as transactions
   - This is the sole mechanism for excluding Pending and Reverted rows — no further filtering is needed downstream
   - _Requirements: R2.8, R2.9, R2.10, R2.13_
 
 - [x] 4.4 Implement description line-joining with continuation patterns and fee absorption
-  - Maintain a pending-row accumulator across table rows. The accumulator holds: `pending_date`, `pending_desc_parts: list[str]`, `pending_money_in`, `pending_money_out`, `pending_balance`.
-  - A row is a **new transaction row** when its date cell matches the `MMM D, YYYY` pattern (e.g. `Apr 1, 2026`). On encountering a new transaction row: if an accumulator is pending, emit the accumulated `Transaction` first; then start a new accumulator from the current row.
-  - A row is a **continuation row** when the date cell and both amount cells are empty, and the description cell is non-empty. Append the description cell text to `pending_desc_parts`.
-  - Write `_is_fee_continuation(text: str) -> bool` that returns `True` when the description text starts with `"Fee: £"`. Fee continuation rows ARE appended to `pending_desc_parts` (they become part of the description) — they do NOT emit a separate `Transaction`. The fee amount is already embedded in the parent row's `Money out` value.
-  - The recognised continuation-row prefixes that mark structural line-joins are: `To: `, `From: `, `Card: `, `Reference: `, `Revolut Rate `, `Fee: £`. Other description-cell text (converted-amount lines following `Revolut Rate`) is also appended.
+  - Maintain a pending-row accumulator across word-grouped rows. The accumulator holds: `pending_date`, `pending_desc_parts: list[str]`, `pending_money_in`, `pending_money_out`, `pending_balance`.
+  - A row is a **new transaction row** when its date-column words (x0 < 120) join to match `_TX_DATE_RE = re.compile(r"^[A-Za-z]{3} \\d{1,2}, \\d{4}$")`. On encountering a new transaction row: if an accumulator is pending, emit the accumulated `Transaction` first; then start a new accumulator from the current row.
+  - A row is a **continuation row** when no date-column words are present, description-column words (120 ≤ x0 < 330) are present, and a pending transaction is open.
+  - Write `_is_valid_continuation(desc_text: str) -> bool` that returns `True` only when the description text starts with one of the recognised prefixes in `_CONTINUATION_PREFIXES = ("To:", "From:", "Card:", "Reference:", "Revolut Rate", "Fee: £")` OR starts with a digit (currency-amount lines that follow a `Revolut Rate` line). This guard is **required** to prevent legal footer lines (e.g. `Reference 900562). Registered address:`) that happen to appear in the description column x-range from being silently absorbed into the last transaction on the page. Only rows where `_is_valid_continuation` returns `True` are appended to `pending_desc_parts`.
+  - Fee continuation rows (`"Fee: £"` prefix) are appended to `pending_desc_parts` (they become part of the description) — they do NOT emit a separate `Transaction`. The fee amount is already embedded in the parent row's `Money out` value.
   - After all rows, emit the final pending accumulator (if any) as a `Transaction`.
   - Build the final `description` as `" ".join(pending_desc_parts)`.
   - _Requirements: R2.6, R2.7, R2.12_
 
 - [x] 4.5 Implement amount column parsing and date parsing
+  - Words are split into columns by x0 coordinate (derived from real PDF word positions):
+    - Date column: x0 < 120.0 (e.g. `Apr` at 42.7, `1,` at 57.5, `2026` at 65.8)
+    - Description column: 120.0 ≤ x0 < 330.0
+    - Money out column: 330.0 ≤ x0 < 415.0 (header `Money` at 335.1; amounts LEFT-aligned at 335.1)
+    - Money in column: 415.0 ≤ x0 < 510.0 (header `Money` at 417.1; amounts LEFT-aligned at 417.1)
+    - Balance column: x0 ≥ 510.0 (header `Balance` at 526.3; amounts RIGHT-aligned)
+  - Constants: `_DATE_COL_X_MAX = 120.0`, `_DESC_COL_X_MAX = 330.0`, `_MONEY_OUT_COL_X_MAX = 415.0`, `_BALANCE_COL_X_MIN = 510.0`
   - Write `_parse_amount_columns(money_out: str, money_in: str) -> tuple[Decimal, Literal["in", "out"]]`:
-    - Strip `£` prefix and thousand-separator commas from each cell
+    - Strip `£` prefix and thousand-separator commas from each string
     - If `money_out` is non-empty and `money_in` is empty: `return Decimal(money_out_cleaned), "out"`
     - If `money_in` is non-empty and `money_out` is empty: `return Decimal(money_in_cleaned), "in"`
     - If both are non-empty: raise `ParseError("Row has values in both Money out and Money in columns")` — this is R2.4, a parser fault
     - Never use `float`. Construct `Decimal` directly from the cleaned string.
-  - Parse transaction dates with `datetime.strptime(date_str, "%b %d, %Y").date()` — this handles both `Apr 1, 2026` and `Apr 14, 2026` (single and double digit days). Do not use system date for year expansion; the year is always explicit in Revolut PDFs.
+  - Parse transaction dates with `datetime.strptime(date_str, "%b %d, %Y").date()` — abbreviated month names (`Apr 1, 2026`, `May 24, 2026`). Do not use system date for year expansion; the year is always explicit in Revolut PDFs.
   - _Requirements: R2.2, R2.3, R2.4, R2.5, R2.11_
 
 - [x] 4.6 Implement `parse_statement(path: Path) -> Statement`
   - Open the PDF with `pdfplumber`; catch open failures and re-raise as `ParseError`
-  - Extract metadata from first page text via `_extract_metadata` (Task 4.2); raise `ParseError` on missing fields
-  - Verify the balance equation immediately after metadata extraction: `opening_balance + total_money_in - total_money_out == closing_balance` using exact `Decimal` equality. Raise `ParseError` if it fails, reporting all four values and the computed difference. This check runs before any transaction parsing — a balance summary that doesn't balance internally is already a parser fault (R7.3).
-  - Iterate all pages and their table rows via `pdfplumber`; maintain the section-detection state machine from Task 4.3 across all pages; run the description-joining accumulator from Task 4.4 on Account transactions rows
+  - Extract metadata from first page text via `page.extract_text()` → `_extract_metadata` (Task 4.2); raise `ParseError` on missing fields. **Note:** `extract_text()` is used only for metadata on page 1 — real Revolut PDFs have no recognisable table structure, so `extract_tables()` returns empty lists on all pages and cannot be used.
+  - Verify the balance equation immediately after metadata extraction: `opening_balance + total_money_in - total_money_out == closing_balance` using exact `Decimal` equality. Raise `ParseError` if it fails, reporting all four values and the computed difference. This check runs before any transaction parsing (R7.3).
+  - Iterate all pages. For each page call `page.extract_words()` to get a list of word dicts (`text`, `x0`, `top`, etc.), then call `_group_words_by_y(words)` to produce a list of rows sorted top-to-bottom, each row sorted left-to-right by x0. Write `_group_words_by_y(words, y_tolerance=3.0)` to group words whose `top` coordinates are within 3 pixels of each other into the same row.
+  - Maintain the section-detection state machine from Task 4.3 across all pages; run the description-joining accumulator from Task 4.4 on Account transactions rows
   - After all pages: handle zero-transaction edge cases — return `Statement` with an empty `transactions` tuple when zero rows AND both `total_money_in` and `total_money_out` are `Decimal("0.00")`; raise `ParseError` when zero rows but either total is non-zero (R9.2)
-  - Non-transaction content (column headers, page headers, "Page N of M" markers, footer disclaimers, QR-code legal text) must be filtered out; rows that don't match the date pattern and aren't continuation rows are silently ignored
+  - Non-transaction content (column headers, page headers, "Page N of M" markers, footer disclaimers, QR-code legal text) falls through all pattern checks and is silently ignored
   - _Requirements: R1.2, R1.3, R1.5, R1.6, R2.1–R2.19, R7.3, R9.1, R9.2_
 
 - [x] 4.7 Create fixtures and write `tests/revolut/test_parser.py`
@@ -271,10 +277,10 @@
     - **Personal-name outbound Faster Payments (Charity / Donations)**: `match_regex: "^To ER Li"` direction `out`; `match_regex: "^To Williams Obiegbu"` direction `out`; `match_regex: "^To JOHN ADEBOLA SAMUEL"` direction `out`; `match_regex: "^To QUEEN IME OKPONGETE"` direction `out`; `match_regex: "^Transfer to Annabel Aigbodion"` direction `out`; `match_regex: "^Transfer to Hersh Hamad"` direction `out` — all → `Charity / Donations`
     - **Phone & Internet**: `match_regex: "^Lebara"` → `Bill - Phone & Internet`
     - **Food Supplies**: `match_regex: "^Morrisons "`, `match_regex: "^Tesco "`, `match_regex: "^Lidl"`, `match_regex: "^ALDI"`, `match_regex: "^Aldi"`, `match_regex: "^Marks & Spencer"`, `match_regex: "^Poundland"`, `match_regex: "^Iceland"`, `match_regex: "^Albaraka Halal"`, `match_regex: "^SPAR"`, `match_regex: "^KeyStore"`, `match_regex: "^Fruits Roots"` — all → `Food Supplies`
-    - **Eating Out**: `match_regex: "^Dghb Catering"`, `match_regex: "^Greggs"`, `match_regex: "^Costa Coffee"`, `match_regex: "^Starbucks"`, `match_regex: "^Enish Glasgow"`, `match_regex: "^The Corner Eatery"`, `match_regex: "^Top Stop Take Away"`, `match_regex: "^Embankment Cafe"`, `match_regex: "^Shanghai Shanghai"`, `match_regex: "^Indian Greedy Coo"`, `match_regex: "^Sumup \\*the Flavour"`, `match_regex: "^Royal Outpost"`, `match_regex: "^Premier"` — all → `Eating Out`
-    - **Holidays & Travel**: `match_regex: "^Trainline"`, `match_regex: "^Travelodge"`, `match_regex: "^Bee Network"`, `match_regex: "^Metrolink"`, `match_regex: "^Manchester Central"`, `match_regex: "^Sumup \\*manchester"`, `match_regex: "^Euro Car Parks"`, `match_regex: "^TransferGo"` — all → `Holidays & Travel`
+    - **Eating Out**: `match_regex: "^Dghb Catering"`, `match_regex: "^Greggs"`, `match_regex: "^Costa Coffee"`, `match_regex: "^Starbucks"`, `match_regex: "^Enish Glasgow"`, `match_regex: "^The Corner Eatery"`, `match_regex: "^Top Stop Take Away"`, `match_regex: "^Embankment Cafe"`, `match_regex: "^Shanghai Shanghai"`, `match_regex: "^Indian Greedy Coo"`, `match_regex: "^The Flavour Hi"`, `match_regex: "^Royal Outpost"`, `match_regex: "^Premier"` — all → `Eating Out` (the merchant short-name for the Sumup/The Flavour merchant is `The Flavour Hi`; `Sumup *the Flavour Hi` only appears in the `To:` continuation row)
+    - **Holidays & Travel**: `match_regex: "^Trainline"`, `match_regex: "^Travelodge"`, `match_regex: "^Bee Network"`, `match_regex: "^Metrolink"`, `match_regex: "^Manchester Central"`, `match_regex: "^Euro Car Parks"`, `match_regex: "^TransferGo"`, `match_regex: "^The Halston"` — all → `Holidays & Travel` (no `^Sumup \\*manchester` rule — `Manchester Central` already handles that merchant)
     - **Car & Gas**: `match_regex: "^Shell"`, `match_regex: "^Halfords"`, `match_regex: "^Focus Motor Store"` — all → `Car & Gas`
-    - **Sundry**: `match_regex: "^Medcouncil"`, `match_regex: "^Holland & Barrett"`, `match_regex: "^Superdrug"`, `match_regex: "^Savers"`, `match_regex: "^Merlin Office"`, `match_regex: "^British Heart Foundation"`, `match_regex: "^Anthropic"` — all → `Sundry`
+    - **Sundry**: `match_regex: "^Medcouncil"`, `match_regex: "^Holland & Barrett"`, `match_regex: "^Superdrug"`, `match_regex: "^Savers"`, `match_regex: "^Merlin Office"`, `match_regex: "^British Heart Foundation"`, `match_regex: "^Anthropic"`, `match_regex: "^Fonetech"` — all → `Sundry`
     - **Gifts/Entertainment/Misc**: `match_regex: "^The Range"`, `match_regex: "^A1 Trading"`, `match_regex: "^Vue"`, `match_regex: "^Boom Battle Bar"`, `match_regex: "^Steam"`, `match_regex: "^The Stove Network"` — all → `Gifts/Entertainment/Misc`
     - **Stocks & Shares ISA**: `match_regex: "^Hargreaves Lansdown"` direction `out` → `Stocks & Shares ISA`
   - Create `tests/revolut/fixtures/rules_example.yaml` — a subset of the live rules sufficient to classify all transactions in `statement_minimal.pdf` and `statement_multi_month.pdf`. Used by `test_cli.py` and `test_parser.py`.
