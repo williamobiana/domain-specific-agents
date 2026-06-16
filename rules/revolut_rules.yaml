@@ -1,11 +1,11 @@
 rules:
-  # Main Account Inflow — top-up transfers from the main Lloyds account
+  # Unexpected / Refund — top-up transfers from 3rd Party accounts
   - match_regex: "^Payment from O OKWU-BOMS"
     direction: in
-    category: "Main Account Inflow"
+    category: "Unexpected / Refund"
   - match_regex: "^Payment from OMASIRICHI OKWU BOMS"
     direction: in
-    category: "Main Account Inflow"
+    category: "Unexpected / Refund"
 
   # Salary
   - match_regex: "^Payment from NATWEST HRPS PAYRO"
