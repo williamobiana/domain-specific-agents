@@ -1,0 +1,167 @@
+rules:
+  # Main Account Inflow — top-up transfers from the main Lloyds account
+  - match_regex: "^Payment from O OKWU-BOMS"
+    direction: in
+    category: "Main Account Inflow"
+  - match_regex: "^Payment from OMASIRICHI OKWU BOMS"
+    direction: in
+    category: "Main Account Inflow"
+
+  # Salary
+  - match_regex: "^Payment from NATWEST HRPS PAYRO"
+    direction: in
+    category: "Salary"
+
+  # Savings (Asset Liquidation) — Hargreaves Lansdown Active Savings cash hub
+  - match_regex: "^Payment from ACTIVE SAVINGS CASH HUB"
+    direction: in
+    category: "Savings"
+
+  # Self-transfers to main Lloyds account (Charity / Donations)
+  - match_regex: "^To Omasirichi Okwu.Boms"
+    direction: out
+    category: "Charity / Donations"
+  - match_regex: "^To Somtochukwu Nchekwubechukwu Obiana"
+    direction: out
+    category: "Charity / Donations"
+
+  # Personal-name outbound Faster Payments (Charity / Donations)
+  - match_regex: "^To ER Li"
+    direction: out
+    category: "Charity / Donations"
+  - match_regex: "^To Williams Obiegbu"
+    direction: out
+    category: "Charity / Donations"
+  - match_regex: "^To JOHN ADEBOLA SAMUEL"
+    direction: out
+    category: "Charity / Donations"
+  - match_regex: "^To QUEEN IME OKPONGETE"
+    direction: out
+    category: "Charity / Donations"
+  - match_regex: "^Transfer to Annabel Aigbodion"
+    direction: out
+    category: "Charity / Donations"
+  - match_regex: "^Transfer to Hersh Hamad"
+    direction: out
+    category: "Charity / Donations"
+
+  # Phone & Internet
+  - match_regex: "^Lebara"
+    category: "Bill - Phone & Internet"
+
+  # Food Supplies
+  - match_regex: "^Morrisons "
+    category: "Food Supplies"
+  - match_regex: "^Tesco "
+    category: "Food Supplies"
+  - match_regex: "^Lidl"
+    category: "Food Supplies"
+  - match_regex: "^ALDI"
+    category: "Food Supplies"
+  - match_regex: "^Aldi"
+    category: "Food Supplies"
+  - match_regex: "^Marks & Spencer"
+    category: "Food Supplies"
+  - match_regex: "^Poundland"
+    category: "Food Supplies"
+  - match_regex: "^Iceland"
+    category: "Food Supplies"
+  - match_regex: "^Albaraka Halal"
+    category: "Food Supplies"
+  - match_regex: "^SPAR"
+    category: "Food Supplies"
+  - match_regex: "^KeyStore"
+    category: "Food Supplies"
+  - match_regex: "^Fruits Roots"
+    category: "Food Supplies"
+
+  # Eating Out
+  - match_regex: "^Dghb Catering"
+    category: "Eating Out"
+  - match_regex: "^Greggs"
+    category: "Eating Out"
+  - match_regex: "^Costa Coffee"
+    category: "Eating Out"
+  - match_regex: "^Starbucks"
+    category: "Eating Out"
+  - match_regex: "^Enish Glasgow"
+    category: "Eating Out"
+  - match_regex: "^The Corner Eatery"
+    category: "Eating Out"
+  - match_regex: "^Top Stop Take Away"
+    category: "Eating Out"
+  - match_regex: "^Embankment Cafe"
+    category: "Eating Out"
+  - match_regex: "^Shanghai Shanghai"
+    category: "Eating Out"
+  - match_regex: "^Indian Greedy Coo"
+    category: "Eating Out"
+  - match_regex: "^The Flavour Hi"
+    category: "Eating Out"
+  - match_regex: "^Royal Outpost"
+    category: "Eating Out"
+  - match_regex: "^Premier"
+    category: "Eating Out"
+
+  # Holidays & Travel
+  - match_regex: "^Trainline"
+    category: "Holidays & Travel"
+  - match_regex: "^Travelodge"
+    category: "Holidays & Travel"
+  - match_regex: "^Bee Network"
+    category: "Holidays & Travel"
+  - match_regex: "^Metrolink"
+    category: "Holidays & Travel"
+  - match_regex: "^Manchester Central"
+    category: "Holidays & Travel"
+  - match_regex: "^Euro Car Parks"
+    category: "Holidays & Travel"
+  - match_regex: "^TransferGo"
+    category: "Holidays & Travel"
+  - match_regex: "^The Halston"
+    category: "Holidays & Travel"
+
+  # Car & Gas
+  - match_regex: "^Shell"
+    category: "Car & Gas"
+  - match_regex: "^Halfords"
+    category: "Car & Gas"
+  - match_regex: "^Focus Motor Store"
+    category: "Car & Gas"
+
+  # Sundry
+  - match_regex: "^Medcouncil"
+    category: "Sundry"
+  - match_regex: "^Holland & Barrett"
+    category: "Sundry"
+  - match_regex: "^Superdrug"
+    category: "Sundry"
+  - match_regex: "^Savers"
+    category: "Sundry"
+  - match_regex: "^Merlin Office"
+    category: "Sundry"
+  - match_regex: "^British Heart Foundation"
+    category: "Sundry"
+  - match_regex: "^Anthropic"
+    category: "Sundry"
+  - match_regex: "^Fonetech"
+    category: "Sundry"
+
+  # Gifts/Entertainment/Misc
+  - match_regex: "^The Range"
+    category: "Gifts/Entertainment/Misc"
+  - match_regex: "^A1 Trading"
+    category: "Gifts/Entertainment/Misc"
+  - match_regex: "^Vue"
+    category: "Gifts/Entertainment/Misc"
+  - match_regex: "^Boom Battle Bar"
+    category: "Gifts/Entertainment/Misc"
+  - match_regex: "^Steam"
+    category: "Gifts/Entertainment/Misc"
+  - match_regex: "^The Stove Network"
+    category: "Gifts/Entertainment/Misc"
+
+  # Stocks & Shares ISA
+  - match_regex: "^Hargreaves Lansdown"
+    direction: out
+    category: "Stocks & Shares ISA"
