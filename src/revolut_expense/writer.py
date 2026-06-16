@@ -7,10 +7,10 @@ from collections import defaultdict
 from decimal import Decimal
 from pathlib import Path
 
-from monzo_expense.classifier import ClassificationResult
-from monzo_expense.parser import Statement
-from monzo_expense.schema import SCHEMA_ORDER, Category, Section
-from monzo_expense.splitter import YearMonth
+from revolut_expense.classifier import ClassificationResult
+from revolut_expense.parser import Statement
+from revolut_expense.schema import SCHEMA_ORDER, Category, Section
+from revolut_expense.splitter import YearMonth
 
 
 def _build_category_totals(result: ClassificationResult) -> dict[Category, Decimal]:
@@ -42,7 +42,7 @@ def write_csvs(
     written_paths: list[Path] = []
 
     for year_month, month_result in sorted(by_month.items()):
-        out_path = out_dir / f"monzo-{year_month.year}-{year_month.month:02d}.csv"
+        out_path = out_dir / f"revolut-{year_month.year}-{year_month.month:02d}.csv"
         category_totals = _build_category_totals(month_result)
 
         section_running: dict[Section, Decimal] = {}

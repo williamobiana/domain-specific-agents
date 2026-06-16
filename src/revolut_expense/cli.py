@@ -15,22 +15,23 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from lloyds_expense.classifier import classify
-from lloyds_expense.errors import ParseError, RulesConfigError
-from lloyds_expense.parser import parse_statement
-from lloyds_expense.reconciler import reconcile
-from lloyds_expense.rules import load_rules
-from lloyds_expense.writer import write_csv
+from revolut_expense.classifier import ClassificationResult, classify
+from revolut_expense.errors import ParseError, RulesConfigError
+from revolut_expense.parser import parse_statement
+from revolut_expense.reconciler import reconcile
+from revolut_expense.rules import load_rules
+from revolut_expense.splitter import YearMonth, split_by_month
+from revolut_expense.writer import write_csvs
 
-_console = Console()
+_stderr = Console(stderr=True)
+_stdout = Console()
 
-# The default rules file location.
-_DEFAULT_RULES_PATH = Path.cwd() / "rules" / "rules.yaml"
+_DEFAULT_RULES_PATH_LOCAL = Path.cwd() / "rules" / "revolut_rules.yaml"
+_DEFAULT_RULES_PATH_USER = Path.home() / ".config" / "revolut-expense" / "rules.yaml"
 
-# Typer application object — imported by __main__.py and referenced in pyproject.toml.
 app = typer.Typer(
-    name="lloyds-expense",
-    help="Transform a Lloyds Bank Classic statement PDF into a categorised monthly cash-flow CSV.",
+    name="revolut-expense",
+    help="Transform a Revolut account statement PDF into categorised monthly cash-flow CSVs.",
     add_completion=False,
 )
 
@@ -39,79 +40,88 @@ app = typer.Typer(
 def main(
     statement_pdf: Annotated[
         Path,
-        typer.Argument(help="Path to Lloyds Classic statement PDF"),
+        typer.Argument(help="Path to Revolut account statement PDF"),
     ],
     rules: Annotated[
         Path | None,
         typer.Option("--rules", help="Path to YAML rules file"),
     ] = None,
-    out: Annotated[
+    out_dir: Annotated[
         Path | None,
-        typer.Option("--out", help="Output CSV path (default: ./output/<pdf-stem>.csv)"),
+        typer.Option(
+            "--out-dir",
+            help="Directory to write output CSVs into (default: ./output)",
+        ),
     ] = None,
     report_unmatched: Annotated[
         Path | None,
         typer.Option("--report-unmatched", help="Write unmatched transactions to this file"),
     ] = None,
 ) -> None:
-    """Process a Lloyds Bank Classic statement PDF and produce a categorised CSV.
+    """Process a Revolut account statement PDF and produce categorised monthly CSVs.
 
     Exit codes:
-      0 — success, CSV written.
-      1 — one or more unmatched transactions; no CSV written.
-      2 — reconciliation mismatch; no CSV written.
+      0 — success, CSV(s) written.
+      1 — one or more unmatched transactions; no CSVs written.
+      2 — reconciliation mismatch; no CSVs written.
       3 — PDF parse failure.
       4 — bad input (missing file, bad rules).
     """
     # ------------------------------------------------------------------
-    # Input validation (exit code 4 for all failures here)
+    # Input validation
     # ------------------------------------------------------------------
 
-    # Default output path: <pdf-stem>.csv inside ./output/
-    if out is None:
-        out = Path.cwd() / "output" / ("lloyds-" + statement_pdf.stem + ".csv")
+    if out_dir is None:
+        out_dir = Path.cwd() / "output"
 
-    # R1.2 / task 9.1: statement_pdf must exist and be readable.
     if not statement_pdf.exists():
-        _console.print(f"[red]Error:[/red] PDF file not found: {statement_pdf}")
+        _stderr.print(f"[red]Error:[/red] PDF file not found: {statement_pdf}")
         raise typer.Exit(code=4)
     if not statement_pdf.is_file():
-        _console.print(f"[red]Error:[/red] Not a file: {statement_pdf}")
+        _stderr.print(f"[red]Error:[/red] Not a file: {statement_pdf}")
         raise typer.Exit(code=4)
 
-    # R3.2 / task 9.1: resolve default rules path.
-    effective_rules: Path = rules if rules is not None else _DEFAULT_RULES_PATH
+    if rules is not None:
+        effective_rules: Path = rules
+    elif _DEFAULT_RULES_PATH_LOCAL.exists():
+        effective_rules = _DEFAULT_RULES_PATH_LOCAL
+    elif _DEFAULT_RULES_PATH_USER.exists():
+        effective_rules = _DEFAULT_RULES_PATH_USER
+    else:
+        _stderr.print(
+            f"[red]Error:[/red] No rules file found. Supply --rules or place a rules file at "
+            f"{_DEFAULT_RULES_PATH_LOCAL} or {_DEFAULT_RULES_PATH_USER}"
+        )
+        raise typer.Exit(code=4)
 
     # ------------------------------------------------------------------
-    # Stage 1: Parse the PDF statement (exit code 3 on failure)
+    # Stage 1: Parse PDF
     # ------------------------------------------------------------------
     try:
         statement = parse_statement(statement_pdf)
     except ParseError as exc:
         page_info = f" (page {exc.page})" if exc.page is not None else ""
-        _console.print(f"[red]Error:[/red] PDF parse failed{page_info}: {exc.message}")
+        _stderr.print(f"[red]Error:[/red] PDF parse failed{page_info}: {exc.message}")
         raise typer.Exit(code=3)
 
     # ------------------------------------------------------------------
-    # Stage 2: Load classification rules (exit code 4 on failure)
+    # Stage 2: Load rules
     # ------------------------------------------------------------------
     try:
         rule_list = load_rules(effective_rules)
     except RulesConfigError as exc:
-        _console.print(f"[red]Error:[/red] Rules configuration error: {exc.message}")
+        _stderr.print(f"[red]Error:[/red] Rules configuration error: {exc.message}")
         if exc.violations:
             for violation in exc.violations:
-                _console.print(f"  - {violation}")
+                _stderr.print(f"  - {violation}")
         raise typer.Exit(code=4)
 
     # ------------------------------------------------------------------
-    # Stage 3: Classify transactions
+    # Stage 3: Classify
     # ------------------------------------------------------------------
     result = classify(statement.transactions, rule_list)
 
-    # R5.1-R5.3 / task 9.2: handle unmatched transactions (exit code 1).
     if result.unmatched:
-        # Build and print a rich table to stderr.
         table = Table(
             title="Unmatched Transactions",
             show_header=True,
@@ -119,38 +129,38 @@ def main(
         )
         table.add_column("Date", style="cyan")
         table.add_column("Description")
-        table.add_column("Type", style="magenta")
         table.add_column("Amount", justify="right", style="green")
         table.add_column("Direction", style="bold")
 
         for tx in result.unmatched:
-            table.add_row(
-                str(tx.date),
-                tx.description,
-                tx.type_code,
-                str(tx.amount),
-                tx.direction,
-            )
+            table.add_row(str(tx.date), tx.description, str(tx.amount), tx.direction)
 
-        _console.print(table)
+        _stderr.print(table)
 
-        # Write plain-text report if --report-unmatched was supplied.
         if report_unmatched is not None:
             lines = [
-                f"{tx.date} | {tx.description} | {tx.type_code} | {tx.amount} | {tx.direction}"
+                f"{tx.date} | {tx.description} | {tx.amount} | {tx.direction}"
                 for tx in result.unmatched
             ]
             report_unmatched.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-        # Do NOT write the output CSV.
         raise typer.Exit(code=1)
 
     # ------------------------------------------------------------------
-    # Stage 4: Reconcile classified totals against statement totals
+    # Stage 4: Split by month
+    # ------------------------------------------------------------------
+    by_month = split_by_month(result)
+
+    # R9.1: zero-transaction statement → emit one all-zero CSV for the start month
+    if not by_month:
+        start_ym = YearMonth(statement.period_start.year, statement.period_start.month)
+        by_month = {start_ym: ClassificationResult(matched=(), unmatched=())}
+
+    # ------------------------------------------------------------------
+    # Stage 5: Reconcile (full period, pre-split result)
     # ------------------------------------------------------------------
     report = reconcile(result, statement)
 
-    # R6.4 / task 9.2: handle reconciliation mismatch (exit code 2).
     if not report.ok:
         recon_table = Table(
             title="Reconciliation Mismatch",
@@ -163,25 +173,24 @@ def main(
         recon_table.add_column("Difference", justify="right")
 
         recon_table.add_row(
-            "Money In",
+            "Money in",
             str(report.money_in_expected),
             str(report.money_in_actual),
             str(report.money_in_diff),
         )
         recon_table.add_row(
-            "Money Out",
+            "Money out",
             str(report.money_out_expected),
             str(report.money_out_actual),
             str(report.money_out_diff),
         )
 
-        _console.print(recon_table)
+        _stderr.print(recon_table)
         raise typer.Exit(code=2)
 
     # ------------------------------------------------------------------
-    # Stage 5: Write the output CSV (exit code 0 on success)
+    # Stage 6: Write CSVs
     # ------------------------------------------------------------------
-    out.parent.mkdir(parents=True, exist_ok=True)
-    write_csv(result, statement, out)
-    _console.print(str(out))
-    # Typer defaults to exit 0 when the command function returns normally.
+    written = write_csvs(by_month, statement, out_dir)
+    for p in written:
+        _stdout.print(str(p))

@@ -17,6 +17,7 @@ dependencies = [
 [project.scripts]
 lloyds-expense = "lloyds_expense.cli:app"
 monzo-expense = "monzo_expense.cli:app"
+revolut-expense = "revolut_expense.cli:app"
 
 [dependency-groups]
 dev = [
@@ -29,7 +30,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/lloyds_expense", "src/monzo_expense"]
+packages = ["src/lloyds_expense", "src/monzo_expense", "src/revolut_expense"]
 
 [tool.ruff]
 target-version = "py311"
@@ -48,11 +49,11 @@ strict = true
 python_version = "3.11"
 
 [tool.pytest.ini_options]
-addopts = "--cov=lloyds_expense --cov=monzo_expense --cov-fail-under=90"
+addopts = "--cov=lloyds_expense --cov=monzo_expense --cov=revolut_expense --cov-fail-under=90"
 testpaths = ["tests"]
 
 [tool.coverage.run]
-source = ["lloyds_expense", "monzo_expense"]
+source = ["lloyds_expense", "monzo_expense", "revolut_expense"]
 omit = ["*/cli.py", "*/__main__.py"]
 
 [tool.coverage.report]
