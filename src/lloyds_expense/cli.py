@@ -25,7 +25,7 @@ from lloyds_expense.writer import write_csv
 _console = Console()
 
 # The default rules file location.
-_DEFAULT_RULES_PATH = Path.cwd() / "rules" / "rules.yaml"
+_DEFAULT_RULES_PATH = Path.cwd() / "rules" / "lloyds_rules.yaml"
 
 # Typer application object — imported by __main__.py and referenced in pyproject.toml.
 app = typer.Typer(

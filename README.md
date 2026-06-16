@@ -36,13 +36,13 @@ uv run lloyds-expense <statement.pdf>
 
 | Option | Default | Description |
 |---|---|---|
-| `--rules` | `rules/rules.yaml` | Path to YAML rules file |
+| `--rules` | `rules/lloyds_rules.yaml` | Path to YAML rules file |
 | `--out` | `<pdf-stem>.csv` in current directory | Output CSV path |
 | `--report-unmatched` | — | Write unmatched transactions to this file |
 
 ### Rules file
 
-Rules live in `rules/rules.yaml`. Each rule maps a transaction to a budget category:
+Rules live in `rules/lloyds_rules.yaml`. Each rule maps a transaction to a budget category:
 
 ```yaml
 rules:
