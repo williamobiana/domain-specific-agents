@@ -69,7 +69,7 @@ def main(
 
     # Default output path: <pdf-stem>.csv inside ./output/
     if out is None:
-        out = Path.cwd() / "output" / (statement_pdf.stem + ".csv")
+        out = Path.cwd() / "output" / ("lloyds-" + statement_pdf.stem + ".csv")
 
     # R1.2 / task 9.1: statement_pdf must exist and be readable.
     if not statement_pdf.exists():

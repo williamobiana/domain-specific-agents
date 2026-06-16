@@ -42,7 +42,7 @@ def write_csvs(
     written_paths: list[Path] = []
 
     for year_month, month_result in sorted(by_month.items()):
-        out_path = out_dir / f"{year_month.year}-{year_month.month:02d}.csv"
+        out_path = out_dir / f"monzo-{year_month.year}-{year_month.month:02d}.csv"
         category_totals = _build_category_totals(month_result)
 
         section_running: dict[Section, Decimal] = {}
