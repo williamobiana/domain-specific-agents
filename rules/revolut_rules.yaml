@@ -20,11 +20,13 @@ rules:
     direction: in
     category: "Savings"
 
-  # Self-transfers to main Lloyds account (Charity / Donations)
-  - match_regex: "^To Omasirichi Okwu.Boms"
-    direction: out
-    category: "Charity / Donations"
+  # Rent
   - match_regex: "^To Somtochukwu Nchekwubechukwu Obiana"
+    direction: out
+    category: "Rent"
+
+  # Self-transfers to Omasiri
+  - match_regex: "^To Omasirichi Okwu.Boms"
     direction: out
     category: "Charity / Donations"
 
@@ -32,19 +34,10 @@ rules:
   - match_regex: "^To ER Li"
     direction: out
     category: "Charity / Donations"
-  - match_regex: "^To Williams Obiegbu"
-    direction: out
-    category: "Charity / Donations"
-  - match_regex: "^To JOHN ADEBOLA SAMUEL"
-    direction: out
-    category: "Charity / Donations"
   - match_regex: "^To QUEEN IME OKPONGETE"
     direction: out
     category: "Charity / Donations"
   - match_regex: "^Transfer to Annabel Aigbodion"
-    direction: out
-    category: "Charity / Donations"
-  - match_regex: "^Transfer to Hersh Hamad"
     direction: out
     category: "Charity / Donations"
 
@@ -111,6 +104,8 @@ rules:
     category: "Eating Out"
   - match_regex: "^Eatery 53"
     category: "Eating Out"
+  - match_regex: "^The Stove Network"
+    category: "Eating Out"    
 
   # Holidays & Travel
   - match_regex: "^Trainline"
@@ -141,6 +136,15 @@ rules:
     category: "Car & Gas"
 
   # Sundry
+  - match_regex: "^To Williams Obiegbu"
+    direction: out
+    category: "Sundry"
+  - match_regex: "^To JOHN ADEBOLA SAMUEL"
+    direction: out
+    category: "Sundry"  
+  - match_regex: "^Transfer to Hersh Hamad"
+    direction: out
+    category: "Sundry"  
   - match_regex: "^Medcouncil"
     category: "Sundry"
   - match_regex: "^Holland & Barrett"
@@ -162,19 +166,19 @@ rules:
   - match_regex: "^TK Maxx"
     category: "Gifts/Entertainment/Misc"
   - match_regex: "^The Range"
-    category: "Gifts/Entertainment/Misc"
-  - match_regex: "^A1 Trading"
-    category: "Gifts/Entertainment/Misc"
+    category: "Food Supplies"
   - match_regex: "^Vue"
     category: "Gifts/Entertainment/Misc"
   - match_regex: "^Boom Battle Bar"
     category: "Gifts/Entertainment/Misc"
   - match_regex: "^Steam"
     category: "Gifts/Entertainment/Misc"
-  - match_regex: "^The Stove Network"
-    category: "Gifts/Entertainment/Misc"
 
   # Stocks & Shares ISA
   - match_regex: "^Hargreaves Lansdown"
     direction: out
     category: "Stocks & Shares ISA"
+
+  # One time expenses
+  - match_regex: "^A1 Trading"
+    category: "Education"
