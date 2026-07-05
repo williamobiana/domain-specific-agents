@@ -68,3 +68,8 @@ rules:
     type: FPO
     direction: out
     category: Charity / Donations
+
+  - match: IBIDOLAPO IJAROTIM
+    type: FPO
+    direction: out
+    category: Charity / Donations

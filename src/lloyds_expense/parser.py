@@ -70,7 +70,7 @@ _TOTAL_LABELS: list[tuple[str, str]] = [
 
 _GARBLED_TX_MONEY_OUT_RE = re.compile(
     r"D(\d)ate (\d) (\w{3}) (\d{2})"   # date: d1 + d2 + Mon + yy
-    r" D(\w)escription (.+?) "           # desc: first-char + rest
+    r" D(\w)escription\s*(.+?) "         # desc: first-char + rest (space sometimes absent)
     r"T(\w)ype (\w+)"                    # type: first-char + rest
     r" \S+ \S+ \S+\)"                    # garbled blank Money In cell
     r" ([\d,]+\.\d{2})Money Out \(£\)"  # money-out amount
@@ -80,7 +80,7 @@ _GARBLED_TX_MONEY_OUT_RE = re.compile(
 
 _GARBLED_TX_MONEY_IN_RE = re.compile(
     r"D(\d)ate (\d) (\w{3}) (\d{2})"   # date: d1 + d2 + Mon + yy
-    r" D(\w)escription (.+?) "           # desc: first-char + rest
+    r" D(\w)escription\s*(.+?) "         # desc: first-char + rest (space sometimes absent)
     r"T(\w)ype (\w+)"                    # type: first-char + rest
     r" ([\d,]+\.\d{2})Money In \(£\)"  # money-in amount
     r" \S+ \S+ \S+\)\."                  # garbled blank Money Out cell
