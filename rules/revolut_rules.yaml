@@ -30,7 +30,7 @@ rules:
     direction: out
     category: "Charity / Donations"
 
-  # Personal-name outbound Faster Payments (Charity / Donations)
+  # Charity / Donations
   - match_regex: "^To ER Li"
     direction: out
     category: "Charity / Donations"
@@ -40,6 +40,8 @@ rules:
   - match_regex: "^Transfer to Annabel Aigbodion"
     direction: out
     category: "Charity / Donations"
+  - match_regex: "^TransferGo"
+    category: "Charity / Donations"    
 
   # Phone & Internet
   - match_regex: "^Lebara"
@@ -70,6 +72,8 @@ rules:
     category: "Food Supplies"
   - match_regex: "^Fruits Roots"
     category: "Food Supplies"
+  - match_regex: "^Asda"
+    category: "Food Supplies"    
 
   # Eating Out
   - match_regex: "^Dghb Catering"
@@ -106,6 +110,18 @@ rules:
     category: "Eating Out"
   - match_regex: "^The Stove Network"
     category: "Eating Out"    
+  - match_regex: "^Domino's pizza"
+    category: "Eating Out"  
+  - match_regex: "^To Chopsticks Foodie Limited"
+    category: "Eating Out"
+  - match_regex: "^To Ariyapot Catering Services"
+    category: "Eating Out"  
+  - match_regex: "^Sugarcane African Rest"
+    category: "Eating Out"  
+  - match_regex: "^Sadies Ice Cream"
+    category: "Eating Out"      
+  - match_regex: "^To Anayah Catering Limited"
+    category: "Eating Out"   
 
   # Holidays & Travel
   - match_regex: "^Trainline"
@@ -120,8 +136,6 @@ rules:
     category: "Holidays & Travel"
   - match_regex: "^Euro Car Parks"
     category: "Holidays & Travel"
-  - match_regex: "^TransferGo"
-    category: "Holidays & Travel"
   - match_regex: "^The Halston"
     category: "Holidays & Travel"
 
@@ -134,6 +148,8 @@ rules:
     category: "Car & Gas"
   - match_regex: "^Nayax Mfg Wilcomatic"
     category: "Car & Gas"
+  - match_regex: "^Kingstown Filling Stat"
+    category: "Car & Gas"    
 
   # Sundry
   - match_regex: "^To Williams Obiegbu"
@@ -161,6 +177,10 @@ rules:
     category: "Sundry"
   - match_regex: "^Fonetech"
     category: "Sundry"
+  - match_regex: "A G Woodcare Products"
+    category: "Sundry"    
+  - match_regex: "Post Office"
+    category: "Sundry"       
 
   # Gifts/Entertainment/Misc
   - match_regex: "^TK Maxx"
@@ -173,6 +193,9 @@ rules:
     category: "Gifts/Entertainment/Misc"
   - match_regex: "^Steam"
     category: "Gifts/Entertainment/Misc"
+  - match_regex: "^Amazon"
+    category: "Gifts/Entertainment/Misc"
+
 
   # Stocks & Shares ISA
   - match_regex: "^Hargreaves Lansdown"
@@ -182,3 +205,6 @@ rules:
   # One time expenses
   - match_regex: "^A1 Trading"
     category: "Education"
+  - match_regex: "^devopsbeast.com"
+    category: "Education"
+
