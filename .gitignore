@@ -37,3 +37,7 @@ Thumbs.db
 
 Statement_*.csv
 output/*
+
+
+# rules
+rules/*
