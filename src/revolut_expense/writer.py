@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import calendar
 import csv
 from collections import defaultdict
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
@@ -27,6 +29,55 @@ def _build_category_totals(result: ClassificationResult) -> dict[Category, Decim
     return totals
 
 
+def _balances_for_month(
+    statement: Statement, year_month: YearMonth
+) -> tuple[Decimal, Decimal]:
+    """Return (opening, closing) account balance for one calendar month.
+
+    Derived from each transaction's own running_balance (the figure Revolut
+    printed on the statement next to that transaction) rather than the
+    statement-level opening/closing balance. This stays correct both for
+    statements spanning multiple calendar months and for statements that
+    concatenate multiple sub-statements (e.g. an account migration
+    mid-period) — running_balance already carries continuously across those
+    boundaries.
+    """
+    all_tx = statement.transactions
+    month_indices = [
+        i
+        for i, tx in enumerate(all_tx)
+        if tx.date.year == year_month.year and tx.date.month == year_month.month
+    ]
+    if not month_indices:
+        return statement.opening_balance, statement.closing_balance
+
+    first_idx = month_indices[0]
+    last_idx = month_indices[-1]
+    opening = (
+        all_tx[first_idx - 1].running_balance
+        if first_idx > 0
+        else statement.opening_balance
+    )
+    closing = all_tx[last_idx].running_balance
+    return opening, closing
+
+
+def _period_bounds_for_month(statement: Statement, year_month: YearMonth) -> tuple[date, date]:
+    """Return (period_start, period_end) for one calendar month within *statement*.
+
+    Clamped to the statement's own period at the first/last covered month, so
+    a statement that starts or ends mid-month reports its true partial range
+    rather than the full calendar month.
+    """
+    last_day = calendar.monthrange(year_month.year, year_month.month)[1]
+    month_start = date(year_month.year, year_month.month, 1)
+    month_end = date(year_month.year, year_month.month, last_day)
+
+    period_start = max(month_start, statement.period_start)
+    period_end = min(month_end, statement.period_end)
+    return period_start, period_end
+
+
 def write_csvs(
     by_month: dict[YearMonth, ClassificationResult],
     statement: Statement,
@@ -44,6 +95,8 @@ def write_csvs(
     for year_month, month_result in sorted(by_month.items()):
         out_path = out_dir / f"revolut-{year_month.year}-{year_month.month:02d}.csv"
         category_totals = _build_category_totals(month_result)
+        period_start, period_end = _period_bounds_for_month(statement, year_month)
+        opening_balance, closing_balance = _balances_for_month(statement, year_month)
 
         section_running: dict[Section, Decimal] = {}
         subtotals_by_group: dict[str, list[Decimal]] = defaultdict(list)
@@ -52,8 +105,9 @@ def write_csvs(
         with open(out_path, "w", encoding="utf-8", newline="") as f:
             writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL, lineterminator="\n")
 
-            writer.writerow(["Period start", str(statement.period_start)])
-            writer.writerow(["Period end", str(statement.period_end)])
+            writer.writerow(["Period start", str(period_start)])
+            writer.writerow(["Period end", str(period_end)])
+            writer.writerow(["Opening Balance", str(opening_balance.quantize(Decimal("0.01")))])
 
             for row in SCHEMA_ORDER:
                 if row.kind == "section_header":
@@ -89,6 +143,8 @@ def write_csvs(
                         "expenditure", Decimal("0.00")
                     )
                     writer.writerow([row.label, str(balance.quantize(Decimal("0.01")))])
+
+            writer.writerow(["Closing Balance", str(closing_balance.quantize(Decimal("0.01")))])
 
         written_paths.append(out_path)
 

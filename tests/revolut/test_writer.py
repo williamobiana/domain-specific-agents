@@ -112,12 +112,13 @@ def test_main_account_inflow_row_present(tmp_path: Path) -> None:
     assert "Main Account Inflow" in content
 
 
-def test_balance_row_is_last(tmp_path: Path) -> None:
+def test_closing_balance_row_is_last(tmp_path: Path) -> None:
     by_month = _all_zero_by_month()
     stmt = _stmt()
     written = write_csvs(by_month, stmt, tmp_path / "out")
     rows = list(csv.reader(written[0].open(encoding="utf-8")))
-    assert rows[-1][0] == "Balance"
+    assert rows[-1][0] == "Closing Balance"
+    assert rows[-2][0] == "Balance"
 
 
 def test_lf_line_endings(tmp_path: Path) -> None:
