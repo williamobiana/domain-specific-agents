@@ -33,11 +33,19 @@ _BALANCE_COL_X_MIN: float = 510.0
 # Regex constants
 # ---------------------------------------------------------------------------
 
-# Balance summary row: "Account (E-Money) £open £money_out £money_in £close"
+# Balance summary "Total" row: "Total £open £money_out £money_in £close"
 # Values appear in sequence (opening balance, money out total, money in total,
 # closing balance) because the column headers are on a separate preceding row.
-_ACCOUNT_EMONEY_RE = re.compile(
-    r"Account \(E-Money\)\s+"
+#
+# A single PDF may contain more than one such block: Revolut splits a
+# statement into consecutive sub-statements whenever the underlying product
+# changes mid-period (e.g. an e-money account migrated to a Revolut Bank UK
+# Ltd current account). Each sub-statement has its own "Balance summary" and
+# "Account transactions from ... to ..." header, on its own page. All blocks
+# in the document are aggregated to reconcile against the full transaction
+# list, which spans every sub-statement.
+_TOTAL_ROW_RE = re.compile(
+    r"Total\s+"
     r"£([\d,]+\.\d{2})\s+"  # group 1: opening balance
     r"£([\d,]+\.\d{2})\s+"  # group 2: money out total
     r"£([\d,]+\.\d{2})\s+"  # group 3: money in total
@@ -104,47 +112,60 @@ class Statement:
 # ---------------------------------------------------------------------------
 
 
-def _extract_metadata(page_text: str) -> dict[str, object]:
-    """Parse Revolut first-page text and return statement metadata.
+def _extract_metadata(page_texts: list[str]) -> dict[str, object]:
+    """Parse Revolut statement text and return aggregated statement metadata.
+
+    Scans every page for "Balance summary" Total rows and "Account
+    transactions from ... to ..." period headers, since a single PDF may
+    concatenate multiple sub-statements (see _TOTAL_ROW_RE). Money in/out
+    totals are summed across all blocks; the opening balance is taken from
+    the first block and the closing balance from the last, so the balance
+    equation holds across the full document.
 
     Raises:
         ParseError: when any required field cannot be located.
     """
-    # Balance summary: the four values are all on the "Account (E-Money)" row.
-    # The column headers (Opening balance / Money out / Money in / Closing balance)
-    # appear on a separate preceding row that extract_text() renders on its own line.
-    balance_match = _ACCOUNT_EMONEY_RE.search(page_text)
-    if balance_match is None:
-        raise ParseError(
-            "Cannot locate 'Account (E-Money)' balance summary row on first page"
-        )
-    opening_balance = Decimal(balance_match.group(1).replace(",", ""))
-    total_money_out = Decimal(balance_match.group(2).replace(",", ""))
-    total_money_in = Decimal(balance_match.group(3).replace(",", ""))
-    closing_balance = Decimal(balance_match.group(4).replace(",", ""))
+    total_matches = [m for text in page_texts for m in _TOTAL_ROW_RE.finditer(text)]
+    if not total_matches:
+        raise ParseError("Cannot locate any 'Total' balance summary row in statement")
 
-    # Statement period from Account transactions header (full month names)
-    period_match = _PERIOD_RE.search(page_text)
-    if period_match is None:
-        raise ParseError("Cannot locate statement period on first page")
-    period_start = datetime.strptime(period_match.group(1), "%B %d, %Y").date()
-    period_end = datetime.strptime(period_match.group(2), "%B %d, %Y").date()
+    opening_balance = Decimal(total_matches[0].group(1).replace(",", ""))
+    closing_balance = Decimal(total_matches[-1].group(4).replace(",", ""))
+    total_money_out = sum(
+        (Decimal(m.group(2).replace(",", "")) for m in total_matches), Decimal("0.00")
+    )
+    total_money_in = sum(
+        (Decimal(m.group(3).replace(",", "")) for m in total_matches), Decimal("0.00")
+    )
+
+    # Statement period from every "Account transactions" header (full month names),
+    # spanning the earliest start and latest end across all sub-statements.
+    period_matches = [m for text in page_texts for m in _PERIOD_RE.finditer(text)]
+    if not period_matches:
+        raise ParseError("Cannot locate statement period in statement")
+    period_start = min(
+        datetime.strptime(m.group(1), "%B %d, %Y").date() for m in period_matches
+    )
+    period_end = max(
+        datetime.strptime(m.group(2), "%B %d, %Y").date() for m in period_matches
+    )
 
     # Account metadata — informational only; absence does not fail the parse
-    sc_match = re.search(r"Sort Code\s+(\d+)", page_text, re.IGNORECASE)
+    first_page_text = page_texts[0]
+    sc_match = re.search(r"Sort Code\s+(\d+)", first_page_text, re.IGNORECASE)
     if sc_match:
         raw = sc_match.group(1)
         sort_code = f"{raw[:2]}-{raw[2:4]}-{raw[4:6]}" if len(raw) == 6 else raw
     else:
         sort_code = ""
 
-    an_match = re.search(r"Account Number\s+(\d+)", page_text, re.IGNORECASE)
+    an_match = re.search(r"Account Number\s+(\d+)", first_page_text, re.IGNORECASE)
     account_number = an_match.group(1) if an_match else ""
 
-    iban_match = re.search(r"IBAN\s+(GB\w+)", page_text, re.IGNORECASE)
+    iban_match = re.search(r"IBAN\s+(GB\w+)", first_page_text, re.IGNORECASE)
     iban = iban_match.group(1) if iban_match else ""
 
-    bic_match = re.search(r"BIC\s+([A-Z0-9]{4,11})", page_text, re.IGNORECASE)
+    bic_match = re.search(r"BIC\s+([A-Z0-9]{4,11})", first_page_text, re.IGNORECASE)
     bic = bic_match.group(1) if bic_match else ""
 
     return {
@@ -242,7 +263,8 @@ def parse_statement(path: Path) -> Statement:
 
     Revolut PDFs do not produce usable table structures via extract_tables().
     This parser uses:
-      - extract_text() on page 1 to extract balance summary and period metadata
+      - extract_text() on every page to extract balance summary and period
+        metadata, aggregated across any concatenated sub-statements
       - extract_words() on all pages with x-coordinate column detection to
         extract transactions, section boundaries, and description continuations
 
@@ -256,9 +278,10 @@ def parse_statement(path: Path) -> Statement:
         raise ParseError(f"Cannot open PDF: {exc}", page=None) from exc
 
     with pdf:
-        # Extract metadata from page-1 text
-        first_page_text = pdf.pages[0].extract_text() or ""
-        meta = _extract_metadata(first_page_text)
+        # Extract metadata across all pages (a PDF may concatenate multiple
+        # sub-statements, each with its own balance summary and period header)
+        page_texts = [page.extract_text() or "" for page in pdf.pages]
+        meta = _extract_metadata(page_texts)
 
         period_start: date = meta["period_start"]  # type: ignore[assignment]
         period_end: date = meta["period_end"]  # type: ignore[assignment]
