@@ -9,6 +9,12 @@ rules:
   - match_regex: "^Payment from OBIANA S N"
     direction: in
     category: "Unexpected / Refund"
+  - match_regex: "^Payment from OKORO"
+    direction: in
+    category: "Unexpected / Refund"
+  - match_regex: "^Mcconechy's Tyre Servi"
+    direction: in
+    category: "Unexpected / Refund"
 
   # Salary
   - match_regex: "^Payment from NATWEST HRPS PAYRO"
@@ -37,7 +43,7 @@ rules:
   - match_regex: "^To QUEEN IME OKPONGETE"
     direction: out
     category: "Charity / Donations"
-  - match_regex: "^Transfer to Annabel Aigbodion"
+  - match_regex: "^To Annabel Aigbodion"
     direction: out
     category: "Charity / Donations"
   - match_regex: "^TransferGo"
@@ -77,6 +83,9 @@ rules:
     category: "Food Supplies"
   - match_regex: "^Asda"
     category: "Food Supplies"
+  - match_regex: "^Transfer to Annabel Aigbodion"
+    direction: out
+    category: "Food Supplies"
 
   # Food Supplies — UK/Canada trip, July 2026
   - match_regex: "^Walmart"
@@ -97,6 +106,10 @@ rules:
     category: "Food Supplies"
   - match_regex: "^Magasin General"
     category: "Food Supplies"
+  - match_regex: "^Sainsburys S Mkts"
+    category: "Food Supplies"
+  - match_regex: "^Sainsbury's"
+    category: "Food Supplies"  
 
   # Eating Out
   - match_regex: "^Dghb Catering"
@@ -144,6 +157,14 @@ rules:
   - match_regex: "^Sadies Ice Cream"
     category: "Eating Out"      
   - match_regex: "^To Anayah Catering Limited"
+    category: "Eating Out"
+  - match_regex: "^Easterbrook Bistro"
+    category: "Eating Out"
+  - match_regex: "^Benvenuto Takeaway"
+    category: "Eating Out"
+  - match_regex: "^Milano Pizza Kebab"
+    category: "Eating Out"
+  - match_regex: "^Ali Tandoori"
     category: "Eating Out"
 
   # Eating Out — UK/Canada trip, July 2026
@@ -195,6 +216,8 @@ rules:
     category: "Eating Out"
   - match_regex: "^Adaria Vending Services"
     category: "Eating Out"
+  - match_regex: "Palmerston Cafe"
+    category: "Eating Out"
 
   # Holidays & Travel
   - match_regex: "^Trainline"
@@ -210,6 +233,8 @@ rules:
   - match_regex: "^Euro Car Parks"
     category: "Holidays & Travel"
   - match_regex: "^The Halston"
+    category: "Holidays & Travel"
+  - match_regex: "^Sandyhills Bay Holiday"
     category: "Holidays & Travel"
 
   # Holidays & Travel — UK/Canada trip, July 2026
@@ -247,6 +272,20 @@ rules:
     category: "Car & Gas"
   - match_regex: "^Mcconechy's Tyre Servi"
     category: "Car & Gas"
+  - match_regex: "^Admiral Insurance"
+    category: "Car & Gas"
+  - match_regex: "^Admiral"
+    direction: out
+    category: "Car & Gas"
+  - match_regex: "^Ccs Mclean's Taxis 047"
+    direction: out
+    category: "Car & Gas"
+  - match_regex: "^Ccsmcleans Taxis M79"
+    direction: out
+    category: "Car & Gas"  
+  - match_regex: "^J.d. Automotion"
+    direction: out
+    category: "Car & Gas"
 
   # Sundry
   - match_regex: "^To Williams Obiegbu"
@@ -277,6 +316,16 @@ rules:
   - match_regex: "A G Woodcare Products"
     category: "Sundry"
   - match_regex: "Post Office"
+    category: "Sundry"
+  - match_regex: "Newton Garden Service"
+    category: "Sundry"
+  - match_regex: "General Medical Counci"
+    category: "Sundry"
+  - match_regex: "247-fitness.co.uk"
+    category: "Sundry"
+  - match_regex: "Lineout"
+    category: "Sundry"
+  - match_regex: "Transfer to Karmand Hamza"
     category: "Sundry"
 
   # Sundry — UK/Canada trip, July 2026
